@@ -19,6 +19,7 @@ from .const import (
     COORDINATOR,
     CLIENT,
     SCENE_MANAGER,
+    ACTIVE_SCENE_ID,
     CONF_HOST,
     CONF_PORT,
     CONF_TIMEOUT,
@@ -71,12 +72,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         scene_manager.get_custom_scene_count()
     )
 
-    # Store coordinator, client, and scene manager
+    # Store coordinator, client, scene manager, and active scene tracking
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         COORDINATOR: coordinator,
         CLIENT: client,
         SCENE_MANAGER: scene_manager,
+        ACTIVE_SCENE_ID: None,  # Track currently active scene
     }
 
     # Register services (only once for the domain)

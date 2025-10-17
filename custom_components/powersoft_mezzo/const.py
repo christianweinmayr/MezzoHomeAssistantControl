@@ -53,6 +53,7 @@ COORDINATOR: Final = "coordinator"
 CLIENT: Final = "client"
 SCENE_MANAGER: Final = "scene_manager"
 ENTRY_ID: Final = "entry_id"
+ACTIVE_SCENE_ID: Final = "active_scene_id"
 
 # Attributes
 ATTR_CHANNEL: Final = "channel"

@@ -11,11 +11,15 @@ from .const import (
     DOMAIN,
     COORDINATOR,
     CLIENT,
+    SCENE_MANAGER,
+    ACTIVE_SCENE_ID,
     UID_SOURCE,
+    UID_SCENE,
     CHANNEL_NUMBERS,
     SOURCE_OPTIONS,
 )
 from .mezzo_client import MezzoClient
+from .scene_manager import SceneManager
 from .mezzo_memory_map import (
     NUM_EQ_BANDS,
     EQ_TYPE_PEAKING,
@@ -46,8 +50,12 @@ async def async_setup_entry(
     """Set up Mezzo select entities."""
     coordinator = hass.data[DOMAIN][entry.entry_id][COORDINATOR]
     client = hass.data[DOMAIN][entry.entry_id][CLIENT]
+    scene_manager: SceneManager = hass.data[DOMAIN][entry.entry_id][SCENE_MANAGER]
 
     entities = []
+
+    # Add scene selector (dropdown)
+    entities.append(MezzoSceneSelect(coordinator, client, scene_manager, entry, hass))
 
     # Add input source selectors for each channel
     for channel in CHANNEL_NUMBERS:
@@ -59,7 +67,85 @@ async def async_setup_entry(
             entities.append(MezzoEQTypeSelect(coordinator, client, entry, channel, band))
 
     async_add_entities(entities)
-    _LOGGER.info("Added %d select entities (sources, EQ types)", len(entities))
+    _LOGGER.info("Added %d select entities (scenes, sources, EQ types)", len(entities))
+
+
+class MezzoSceneSelect(CoordinatorEntity, SelectEntity):
+    """Representation of a scene selector."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:palette"
+
+    def __init__(
+        self,
+        coordinator,
+        client: MezzoClient,
+        scene_manager: SceneManager,
+        entry: ConfigEntry,
+        hass: HomeAssistant,
+    ):
+        """Initialize the scene select entity."""
+        super().__init__(coordinator)
+        self._client = client
+        self._scene_manager = scene_manager
+        self._entry = entry
+        self._hass = hass
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Powersoft",
+            "model": "Mezzo 602 AD",
+        }
+        self._attr_unique_id = f"{entry.entry_id}_{UID_SCENE}_selector"
+        self._attr_name = "Scene"
+
+        # Build options list from all scenes
+        self._scenes = scene_manager.get_all_scenes()
+        self._attr_options = [scene["name"] for scene in self._scenes]
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the currently active scene name."""
+        active_scene_id = self._hass.data[DOMAIN][self._entry.entry_id][ACTIVE_SCENE_ID]
+
+        if active_scene_id is None:
+            return None
+
+        # Find the scene with this ID
+        for scene in self._scenes:
+            if scene["id"] == active_scene_id:
+                return scene["name"]
+
+        return None
+
+    async def async_select_option(self, option: str) -> None:
+        """Select and apply a scene."""
+        try:
+            # Find the scene by name
+            scene_to_apply = None
+            for scene in self._scenes:
+                if scene["name"] == option:
+                    scene_to_apply = scene
+                    break
+
+            if scene_to_apply is None:
+                _LOGGER.error("Scene not found: %s", option)
+                return
+
+            _LOGGER.info("Applying scene from selector: %s", scene_to_apply["name"])
+
+            # Apply the scene
+            await self._client.apply_scene(scene_to_apply)
+
+            # Update active scene tracking
+            self._hass.data[DOMAIN][self._entry.entry_id][ACTIVE_SCENE_ID] = scene_to_apply["id"]
+
+            # Force immediate coordinator refresh
+            await self.coordinator.async_request_refresh()
+
+        except Exception as err:
+            _LOGGER.error("Failed to apply scene %s: %s", option, err)
+            raise
 
 
 class MezzoSourceSelect(CoordinatorEntity, SelectEntity):

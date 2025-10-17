@@ -14,6 +14,7 @@ from .const import (
     COORDINATOR,
     CLIENT,
     SCENE_MANAGER,
+    ACTIVE_SCENE_ID,
     UID_SCENE,
 )
 from .mezzo_client import MezzoClient
@@ -109,6 +110,7 @@ class MezzoSceneButton(CoordinatorEntity, ButtonEntity):
         super().__init__(coordinator)
         self._client = client
         self._scene_config = scene_config
+        self._entry = entry
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": entry.title,
@@ -151,6 +153,10 @@ class MezzoSceneButton(CoordinatorEntity, ButtonEntity):
         try:
             _LOGGER.info("Applying scene: %s", self._scene_config["name"])
             await self._client.apply_scene(self._scene_config)
+
+            # Update active scene tracking
+            self.hass.data[DOMAIN][self._entry.entry_id][ACTIVE_SCENE_ID] = self._scene_config["id"]
+
             # Force immediate coordinator refresh to show new state
             await self.coordinator.async_request_refresh()
         except Exception as err:
