@@ -245,12 +245,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 output_lines.append(f"\nChannel {ch_idx + 1}:")
                 for band_idx, band in enumerate(channel_eq):
                     enabled_str = "ENABLED" if band["enabled"] else "disabled"
-                    gain_db = 20 * __import__('math').log10(band["gain"]) if band["gain"] > 0 else -float('inf')
+                    gain_db = band["gain"]  # Gain is already in dB
                     output_lines.append(
                         f"  Band {band_idx + 1}: {enabled_str:8s} | "
                         f"Type={band['type']:2d} | "
                         f"Freq={band['frequency']:5d}Hz | "
-                        f"Gain={band['gain']:.2f} ({gain_db:+.1f}dB) | "
+                        f"Gain={gain_db:+.1f}dB | "
                         f"Q={band['q']:.2f}"
                     )
 

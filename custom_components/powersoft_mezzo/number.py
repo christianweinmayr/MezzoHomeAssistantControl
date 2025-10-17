@@ -176,8 +176,8 @@ class MezzoEQGainNumber(CoordinatorEntity, NumberEntity):
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:amplifier"
-    _attr_native_min_value = -12.0
-    _attr_native_max_value = 12.0
+    _attr_native_min_value = -15.0
+    _attr_native_max_value = 15.0
     _attr_native_step = 0.1
     _attr_native_unit_of_measurement = "dB"
     _attr_mode = NumberMode.SLIDER
@@ -211,23 +211,18 @@ class MezzoEQGainNumber(CoordinatorEntity, NumberEntity):
             'eq' in self.coordinator.data and
             self._channel in self.coordinator.data['eq'] and
             self._band in self.coordinator.data['eq'][self._channel]):
-            linear_gain = self.coordinator.data['eq'][self._channel][self._band].get("gain", 1.0)
-            if linear_gain > 0:
-                return 20 * math.log10(linear_gain)
-            else:
-                return -12.0
+            # Gain is already stored in dB, no conversion needed
+            gain_db = self.coordinator.data['eq'][self._channel][self._band].get("gain", 0.0)
+            return float(gain_db)
         return None
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the gain in dB."""
         try:
-            # Convert dB to linear gain: gain = 10^(dB/20)
-            linear_gain = 10 ** (value / 20)
-
             # Read current settings
             current = await self._client.get_eq_band(self._channel, self._band)
 
-            # Write back with new gain
+            # Write back with new gain (value is already in dB)
             await self._client.set_eq_band(
                 self._channel,
                 self._band,
@@ -236,7 +231,7 @@ class MezzoEQGainNumber(CoordinatorEntity, NumberEntity):
                 q=current["q"],
                 slope=current["slope"],
                 frequency=current["frequency"],
-                gain=linear_gain,
+                gain=value,  # Send dB value directly
             )
             await self.coordinator.async_request_refresh()
         except Exception as err:

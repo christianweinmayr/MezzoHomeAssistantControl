@@ -187,19 +187,14 @@ class MezzoEQSensor(CoordinatorEntity, SensorEntity):
             enabled = bool(band_data.get("enabled", 0))
             filt_type = band_data.get("type", 0)
             freq = band_data.get("frequency", 1000)
-            gain = band_data.get("gain", 1.0)
+            gain_db = band_data.get("gain", 0.0)  # Gain is already in dB
             q = band_data.get("q", 1.0)
-
-            # Convert gain to dB
-            import math
-            gain_db = 20 * math.log10(gain) if gain > 0 else -float('inf')
 
             band_prefix = f"band_{band_num}"
             attrs[f"{band_prefix}_enabled"] = enabled
             attrs[f"{band_prefix}_type"] = self.EQ_TYPE_NAMES.get(filt_type, f"Type {filt_type}")
             attrs[f"{band_prefix}_frequency_hz"] = freq
-            attrs[f"{band_prefix}_gain_linear"] = round(gain, 3)
-            attrs[f"{band_prefix}_gain_db"] = round(gain_db, 2) if gain_db != -float('inf') else -99.0
+            attrs[f"{band_prefix}_gain_db"] = round(gain_db, 2)
             attrs[f"{band_prefix}_q"] = round(q, 2)
 
         return attrs

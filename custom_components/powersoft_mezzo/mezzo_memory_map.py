@@ -144,7 +144,7 @@ ADDR_USER_EQ_CH4_END = 0x00004280
 # +0x08: Q (Float, 4 bytes) - Quality factor
 # +0x0C: Slope (Float, 4 bytes) - Filter slope
 # +0x10: Frequency (uint32, 4 bytes) - Center frequency in Hz
-# +0x14: Gain (Float, 4 bytes) - Linear gain
+# +0x14: Gain (Float, 4 bytes) - Gain in dB (range: -15.0 to +15.0)
 
 # EQ Filter Types
 EQ_TYPE_PEAKING = 0
