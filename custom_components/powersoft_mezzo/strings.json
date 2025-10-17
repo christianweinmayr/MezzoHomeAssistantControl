@@ -1,0 +1,123 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "menu_options": {
+          "discovery": "Auto-discover amplifiers",
+          "manual": "Manual configuration"
+        }
+      },
+      "discovery": {
+        "title": "Select Discovered Amplifier",
+        "description": "Found {count} amplifier(s) on your network. Select one to configure.",
+        "data": {
+          "host": "Amplifier",
+          "name": "Name (optional)"
+        }
+      },
+      "manual": {
+        "title": "Manual Configuration",
+        "description": "Enter the IP address and port of your Mezzo amplifier.",
+        "data": {
+          "host": "Host (IP Address)",
+          "port": "Port",
+          "name": "Name"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the amplifier. Please check the IP address and ensure the amplifier is powered on and connected to your network.",
+      "timeout": "Connection timeout. The amplifier did not respond in time.",
+      "unknown": "An unexpected error occurred. Please check the logs for more details."
+    },
+    "abort": {
+      "already_configured": "This amplifier is already configured.",
+      "no_devices_found": "No Mezzo amplifiers were discovered on your network. Please use manual configuration.",
+      "cannot_connect": "Unable to connect to the amplifier."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "description": "Configure advanced settings for the Mezzo amplifier integration.",
+        "data": {
+          "timeout": "Request Timeout (seconds)",
+          "scan_interval": "Update Interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "power": {
+        "name": "Power"
+      },
+      "mute_ch1": {
+        "name": "Mute Channel 1"
+      },
+      "mute_ch2": {
+        "name": "Mute Channel 2"
+      },
+      "mute_ch3": {
+        "name": "Mute Channel 3"
+      },
+      "mute_ch4": {
+        "name": "Mute Channel 4"
+      }
+    },
+    "number": {
+      "volume_ch1": {
+        "name": "Volume Channel 1"
+      },
+      "volume_ch2": {
+        "name": "Volume Channel 2"
+      },
+      "volume_ch3": {
+        "name": "Volume Channel 3"
+      },
+      "volume_ch4": {
+        "name": "Volume Channel 4"
+      }
+    },
+    "select": {
+      "source_ch1": {
+        "name": "Input Source Channel 1"
+      },
+      "source_ch2": {
+        "name": "Input Source Channel 2"
+      },
+      "source_ch3": {
+        "name": "Input Source Channel 3"
+      },
+      "source_ch4": {
+        "name": "Input Source Channel 4"
+      }
+    },
+    "sensor": {
+      "temp_transformer": {
+        "name": "Transformer Temperature"
+      },
+      "temp_heatsink": {
+        "name": "Heatsink Temperature"
+      },
+      "fault_code": {
+        "name": "Fault Code"
+      }
+    },
+    "button": {
+      "preset_0": {
+        "name": "Preset 1"
+      },
+      "preset_1": {
+        "name": "Preset 2"
+      },
+      "preset_2": {
+        "name": "Preset 3"
+      },
+      "preset_3": {
+        "name": "Preset 4"
+      }
+    }
+  }
+}
