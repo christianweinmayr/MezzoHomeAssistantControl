@@ -192,6 +192,7 @@ UID_TEMP_CHANNEL: Final = "temp_ch"
 UID_FAULT_CODE: Final = "fault_code"
 UID_MUTE_CODES: Final = "mute_codes_ch"
 UID_STANDBY_STATE: Final = "standby_state"
+UID_EQ: Final = "eq_ch"
 
 # Channel configuration
 NUM_CHANNELS: Final = 4

@@ -15,11 +15,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DOMAIN,
     COORDINATOR,
+    CLIENT,
     UID_TEMP_TRANSFORMER,
     UID_TEMP_HEATSINK,
     UID_FAULT_CODE,
+    UID_EQ,
 )
-from .mezzo_memory_map import FAULT_CODES
+from .mezzo_memory_map import FAULT_CODES, NUM_CHANNELS, EQ_TYPE_PEAKING, EQ_TYPE_LOW_SHELVING, EQ_TYPE_HIGH_SHELVING
+from .mezzo_client import MezzoClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,7 +33,8 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Mezzo sensor entities."""
-    coordinator = hass.data[DOMAIN][entry.entry_id][ COORDINATOR]
+    coordinator = hass.data[DOMAIN][entry.entry_id][COORDINATOR]
+    client = hass.data[DOMAIN][entry.entry_id][CLIENT]
 
     entities = []
 
@@ -44,6 +48,10 @@ async def async_setup_entry(
 
     # Fault code sensor
     entities.append(MezzoFaultCodeSensor(coordinator, entry))
+
+    # EQ sensors (one per channel)
+    for channel in range(1, NUM_CHANNELS + 1):
+        entities.append(MezzoEQSensor(coordinator, client, entry, channel))
 
     async_add_entities(entities)
 
@@ -120,3 +128,85 @@ class MezzoFaultCodeSensor(CoordinatorEntity, SensorEntity):
             if code is not None:
                 return {"fault_code": code}
         return {}
+
+
+class MezzoEQSensor(CoordinatorEntity, SensorEntity):
+    """Representation of EQ configuration sensor for a channel."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:equalizer"
+
+    # Map EQ filter types to human-readable names
+    EQ_TYPE_NAMES = {
+        0: "Peaking",
+        11: "Low Shelving",
+        12: "High Shelving",
+        13: "Low Pass",
+        14: "High Pass",
+        15: "Band Pass",
+        16: "Band Stop",
+        17: "All Pass",
+    }
+
+    def __init__(self, coordinator, client: MezzoClient, entry: ConfigEntry, channel: int):
+        """Initialize the EQ sensor."""
+        super().__init__(coordinator)
+        self._client = client
+        self._channel = channel
+        self._eq_data = None
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Powersoft",
+            "model": "Mezzo 602 AD",
+        }
+        self._attr_unique_id = f"{entry.entry_id}_{UID_EQ}{channel}"
+        self._attr_name = f"EQ Channel {channel}"
+
+    @property
+    def native_value(self) -> int:
+        """Return number of enabled EQ bands."""
+        if self._eq_data:
+            return sum(1 for band in self._eq_data if band.get("enabled", 0))
+        return 0
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return EQ configuration as attributes."""
+        if not self._eq_data:
+            return {}
+
+        attrs = {}
+        for i, band in enumerate(self._eq_data, 1):
+            enabled = bool(band.get("enabled", 0))
+            filt_type = band.get("type", 0)
+            freq = band.get("frequency", 1000)
+            gain = band.get("gain", 1.0)
+            q = band.get("q", 1.0)
+
+            # Convert gain to dB
+            import math
+            gain_db = 20 * math.log10(gain) if gain > 0 else -float('inf')
+
+            band_prefix = f"band_{i}"
+            attrs[f"{band_prefix}_enabled"] = enabled
+            attrs[f"{band_prefix}_type"] = self.EQ_TYPE_NAMES.get(filt_type, f"Type {filt_type}")
+            attrs[f"{band_prefix}_frequency_hz"] = freq
+            attrs[f"{band_prefix}_gain_linear"] = round(gain, 3)
+            attrs[f"{band_prefix}_gain_db"] = round(gain_db, 2) if gain_db != -float('inf') else -99.0
+            attrs[f"{band_prefix}_q"] = round(q, 2)
+
+        return attrs
+
+    async def async_update(self) -> None:
+        """Fetch EQ data from amplifier."""
+        try:
+            # Read EQ for this specific channel (all 4 bands)
+            eq_bands = []
+            for band in range(1, 5):  # 4 bands per channel
+                band_data = await self._client.get_eq_band(self._channel, band)
+                eq_bands.append(band_data)
+            self._eq_data = eq_bands
+        except Exception as err:
+            _LOGGER.debug("Failed to update EQ for channel %d: %s", self._channel, err)
+            self._eq_data = None
