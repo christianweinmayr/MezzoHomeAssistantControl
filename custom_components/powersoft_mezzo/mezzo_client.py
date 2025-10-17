@@ -457,69 +457,26 @@ class MezzoClient:
             value = STANDBY_ACTIVATE if standby else STANDBY_DEACTIVATE
             commands.append(WriteCommand(ADDR_STANDBY_TRIGGER, uint32_to_bytes(value)))
 
-        # Send commands - split into batches if EQ is included to avoid timeout
+        # Send commands one at a time to avoid amplifier parsing issues
+        # The amplifier seems to have trouble with large multicommands
         scene_name = scene_config.get('name', 'Unknown')
-        has_eq = 'eq' in scene_config
+        _LOGGER.info("Applying scene '%s' with %d commands (sequential)", scene_name, len(commands))
 
         try:
-            if has_eq and len(commands) > 20:
-                # Split into two batches: basic settings first, then EQ
-                # Find where EQ commands start (after volumes, mutes, sources)
-                basic_count = 12  # 4 volumes + 4 mutes + 4 sources
-                if 'standby' in scene_config and not has_eq:
-                    basic_count += 1
+            failed_count = 0
+            for i, cmd in enumerate(commands):
+                try:
+                    responses = await self._udp.send_request([cmd], timeout=2.0)
+                    if responses and responses[0].is_nak():
+                        _LOGGER.warning("Command %d/%d NAK (addr=0x%08x)", i+1, len(commands), cmd.address)
+                        failed_count += 1
+                except Exception as cmd_err:
+                    _LOGGER.warning("Command %d/%d failed: %s (addr=0x%08x)", i+1, len(commands), cmd_err, cmd.address)
+                    failed_count += 1
 
-                eq_start = basic_count
-                basic_commands = commands[:eq_start]
-                eq_commands = commands[eq_start:-1] if 'standby' in scene_config else commands[eq_start:]
-                power_command = [commands[-1]] if 'standby' in scene_config and has_eq else []
-
-                _LOGGER.info("Applying scene '%s' in batches: %d basic, %d EQ, %d power",
-                            scene_name, len(basic_commands), len(eq_commands), len(power_command))
-
-                # Send basic settings first with longer timeout
-                _LOGGER.debug("Sending basic settings...")
-                responses1 = await self._udp.send_request(basic_commands, timeout=5.0)
-
-                # Check basic settings responses
-                failed = [i for i, r in enumerate(responses1) if r.is_nak()]
-                if failed:
-                    _LOGGER.warning("Basic settings partially failed: %s", failed)
-
-                # Send EQ settings with even longer timeout (more commands)
-                if eq_commands:
-                    _LOGGER.debug("Sending EQ settings...")
-                    responses2 = await self._udp.send_request(eq_commands, timeout=10.0)
-
-                    # Check EQ responses
-                    failed_eq = [i for i, r in enumerate(responses2) if r.is_nak()]
-                    if failed_eq:
-                        _LOGGER.warning("EQ settings partially failed: %s", failed_eq)
-
-                # Send power command last if present
-                if power_command:
-                    _LOGGER.debug("Sending power state...")
-                    responses3 = await self._udp.send_request(power_command, timeout=5.0)
-                    if responses3[0].is_nak():
-                        _LOGGER.warning("Power state change failed")
-
-                _LOGGER.info("Scene '%s' applied successfully (batched)", scene_name)
-
+            if failed_count > 0:
+                _LOGGER.warning("Scene '%s' applied with %d/%d failures", scene_name, failed_count, len(commands))
             else:
-                # Send all commands in single batch (no EQ or small number of commands)
-                _LOGGER.info("Applying scene '%s' with %d commands", scene_name, len(commands))
-                responses = await self._udp.send_request(commands, timeout=5.0)
-
-                # Check for any NAK responses
-                failed_commands = []
-                for i, response in enumerate(responses):
-                    if response.is_nak():
-                        failed_commands.append(i)
-
-                if failed_commands:
-                    _LOGGER.warning("Some commands failed in scene application: %s", failed_commands)
-                    raise ValueError(f"Scene application partially failed: {len(failed_commands)}/{len(commands)} commands rejected")
-
                 _LOGGER.info("Scene '%s' applied successfully", scene_name)
 
         except Exception as err:
