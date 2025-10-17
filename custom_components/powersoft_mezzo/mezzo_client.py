@@ -457,22 +457,32 @@ class MezzoClient:
             value = STANDBY_ACTIVATE if standby else STANDBY_DEACTIVATE
             commands.append(WriteCommand(ADDR_STANDBY_TRIGGER, uint32_to_bytes(value)))
 
-        # Send commands one at a time to avoid amplifier parsing issues
-        # The amplifier seems to have trouble with large multicommands
+        # Send commands in batches for better performance
+        # We can batch commands efficiently now that write response parsing is fixed
         scene_name = scene_config.get('name', 'Unknown')
-        _LOGGER.info("Applying scene '%s' with %d commands (sequential)", scene_name, len(commands))
+        _LOGGER.info("Applying scene '%s' with %d commands", scene_name, len(commands))
 
         try:
+            # Split into reasonable batch sizes (12 commands per batch = volumes + mutes + sources)
+            # This way we can send basic controls, then EQ, then power
+            batch_size = 12
             failed_count = 0
-            for i, cmd in enumerate(commands):
+
+            for batch_start in range(0, len(commands), batch_size):
+                batch = commands[batch_start:batch_start + batch_size]
                 try:
-                    responses = await self._udp.send_request([cmd], timeout=2.0)
-                    if responses and responses[0].is_nak():
-                        _LOGGER.warning("Command %d/%d NAK (addr=0x%08x)", i+1, len(commands), cmd.address)
-                        failed_count += 1
-                except Exception as cmd_err:
-                    _LOGGER.warning("Command %d/%d failed: %s (addr=0x%08x)", i+1, len(commands), cmd_err, cmd.address)
-                    failed_count += 1
+                    responses = await self._udp.send_request(batch, timeout=3.0)
+                    # Check for NAKs
+                    for i, resp in enumerate(responses):
+                        if resp.is_nak():
+                            cmd_idx = batch_start + i
+                            _LOGGER.warning("Command %d/%d NAK (addr=0x%08x)",
+                                          cmd_idx+1, len(commands), commands[cmd_idx].address)
+                            failed_count += 1
+                except Exception as batch_err:
+                    _LOGGER.warning("Batch %d-%d failed: %s",
+                                  batch_start+1, min(batch_start+batch_size, len(commands)), batch_err)
+                    failed_count += len(batch)
 
             if failed_count > 0:
                 _LOGGER.warning("Scene '%s' applied with %d/%d failures", scene_name, failed_count, len(commands))

@@ -302,12 +302,22 @@ class PBusPacket:
             offset += 9
 
             # Read data if size > 0 (not a NAK)
+            # Note: For WRITE responses, the amplifier may set SIZE to the number of
+            # bytes written but NOT include the data in the response payload.
+            # We only try to read data if it's actually present.
             data = None
             if size > 0:
-                if offset + size > len(payload):
-                    raise ValueError("Response data extends beyond payload")
-                data = payload[offset:offset+size]
-                offset += size
+                # Check if this is a WRITE response
+                if opcode == OPCODE_WRITE:
+                    # For writes, SIZE indicates bytes written but data is not returned
+                    # This is an ACK - don't try to read data
+                    pass
+                else:
+                    # For reads, data should be present
+                    if offset + size > len(payload):
+                        raise ValueError("Response data extends beyond payload")
+                    data = payload[offset:offset+size]
+                    offset += size
 
             responses.append(PBusResponse(opcode, address, size, data))
 
