@@ -4,10 +4,9 @@ from typing import Any
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
     DOMAIN,
@@ -32,38 +31,23 @@ async def async_setup_entry(
     client = hass.data[DOMAIN][entry.entry_id][CLIENT]
     scene_manager: SceneManager = hass.data[DOMAIN][entry.entry_id][SCENE_MANAGER]
 
-    @callback
-    def async_add_scene_buttons():
-        """Add or update scene button entities."""
-        # Get all scenes (default + custom)
-        scenes = scene_manager.get_all_scenes()
+    # Get all scenes (default + custom)
+    scenes = scene_manager.get_all_scenes()
 
-        # Create button entities
-        entities = []
-        for scene in scenes:
-            entities.append(
-                MezzoSceneButton(
-                    coordinator,
-                    client,
-                    entry,
-                    scene,
-                )
+    # Create button entities
+    entities = []
+    for scene in scenes:
+        entities.append(
+            MezzoSceneButton(
+                coordinator,
+                client,
+                entry,
+                scene,
             )
-
-        async_add_entities(entities, update_before_add=True)
-        _LOGGER.info("Added %d scene button(s)", len(entities))
-
-    # Add initial buttons
-    async_add_scene_buttons()
-
-    # Listen for scene updates to dynamically add/remove buttons
-    entry.async_on_unload(
-        async_dispatcher_connect(
-            hass,
-            f"{DOMAIN}_scenes_updated_{entry.entry_id}",
-            async_add_scene_buttons,
         )
-    )
+
+    async_add_entities(entities, update_before_add=True)
+    _LOGGER.info("Added %d scene button(s)", len(entities))
 
 
 class MezzoSceneButton(CoordinatorEntity, ButtonEntity):

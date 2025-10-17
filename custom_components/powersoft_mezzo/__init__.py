@@ -120,7 +120,6 @@ async def async_register_services(hass: HomeAssistant) -> None:
     """Register integration services."""
     import voluptuous as vol
     from homeassistant.helpers import config_validation as cv
-    from homeassistant.helpers.dispatcher import async_dispatcher_send
 
     _LOGGER.info("Registering Powersoft Mezzo services")
 
@@ -144,8 +143,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
             _LOGGER.info("Successfully created scene '%s' (ID: %d)", name, scene_id)
 
-            # Notify button platform to reload
-            async_dispatcher_send(hass, f"{DOMAIN}_scenes_updated_{entry_id}")
+            # Reload integration to refresh button entities
+            await hass.config_entries.async_reload(entry_id)
 
         except Exception as err:
             _LOGGER.error("Failed to save scene '%s': %s", name, err)
@@ -171,8 +170,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
             _LOGGER.info("Successfully updated scene ID %d", scene_id)
 
-            # Notify button platform to reload
-            async_dispatcher_send(hass, f"{DOMAIN}_scenes_updated_{entry_id}")
+            # Reload integration to refresh button entities
+            await hass.config_entries.async_reload(entry_id)
 
         except Exception as err:
             _LOGGER.error("Failed to update scene %d: %s", scene_id, err)
@@ -194,8 +193,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
             _LOGGER.info("Successfully deleted scene ID %d", scene_id)
 
-            # Notify button platform to reload
-            async_dispatcher_send(hass, f"{DOMAIN}_scenes_updated_{entry_id}")
+            # Reload integration to refresh button entities
+            await hass.config_entries.async_reload(entry_id)
 
         except Exception as err:
             _LOGGER.error("Failed to delete scene %d: %s", scene_id, err)
@@ -203,7 +202,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_capture_eq(call):
         """Handle capture_eq service call (debugging helper)."""
-        _LOGGER.info("Service call: capture_eq")
+        _LOGGER.warning("Service call: capture_eq - Reading EQ from amplifier...")
 
         # Get the first available entry
         entry_id = next(iter(hass.data[DOMAIN].keys()))
@@ -214,24 +213,52 @@ async def async_register_services(hass: HomeAssistant) -> None:
             # Read EQ from amplifier
             eq_config = await client.get_all_eq()
 
-            # Log the EQ configuration
-            _LOGGER.info("Current EQ configuration:")
+            # Build formatted output
+            output_lines = ["Current EQ Configuration:"]
+            output_lines.append("=" * 60)
+
             for ch_idx, channel_eq in enumerate(eq_config):
-                _LOGGER.info("  Channel %d:", ch_idx + 1)
+                output_lines.append(f"\nChannel {ch_idx + 1}:")
                 for band_idx, band in enumerate(channel_eq):
                     enabled_str = "ENABLED" if band["enabled"] else "disabled"
-                    _LOGGER.info(
-                        "    Band %d: %s, Type=%d, Freq=%dHz, Gain=%.2f, Q=%.2f",
-                        band_idx + 1,
-                        enabled_str,
-                        band["type"],
-                        band["frequency"],
-                        band["gain"],
-                        band["q"],
+                    gain_db = 20 * __import__('math').log10(band["gain"]) if band["gain"] > 0 else -float('inf')
+                    output_lines.append(
+                        f"  Band {band_idx + 1}: {enabled_str:8s} | "
+                        f"Type={band['type']:2d} | "
+                        f"Freq={band['frequency']:5d}Hz | "
+                        f"Gain={band['gain']:.2f} ({gain_db:+.1f}dB) | "
+                        f"Q={band['q']:.2f}"
                     )
+
+            output_text = "\n".join(output_lines)
+
+            # Log to Home Assistant logs
+            _LOGGER.warning("EQ Capture Results:\n%s", output_text)
+
+            # Create persistent notification visible in UI
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Amplifier EQ Configuration",
+                    "message": f"```\n{output_text}\n```",
+                    "notification_id": f"{DOMAIN}_eq_capture",
+                },
+            )
+
+            _LOGGER.warning("EQ capture complete. Check notifications for results.")
 
         except Exception as err:
             _LOGGER.error("Failed to capture EQ: %s", err)
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "EQ Capture Failed",
+                    "message": f"Error reading EQ from amplifier: {err}",
+                    "notification_id": f"{DOMAIN}_eq_capture_error",
+                },
+            )
             raise
 
     # Register services
