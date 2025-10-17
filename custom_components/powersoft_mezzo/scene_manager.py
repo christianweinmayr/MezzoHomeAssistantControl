@@ -18,8 +18,8 @@ _LOGGER = logging.getLogger(__name__)
 STORAGE_VERSION = 1
 STORAGE_KEY = "powersoft_mezzo_scenes"
 
-# Custom scene IDs start at 100 to avoid conflicts with defaults (0-3)
-CUSTOM_SCENE_ID_START = 100
+# Custom scene IDs start at 1 (no default scenes anymore)
+CUSTOM_SCENE_ID_START = 1
 
 
 class SceneManager:
@@ -237,12 +237,8 @@ class SceneManager:
             config: New scene configuration
 
         Raises:
-            ValueError: If scene not found or is a default scene
+            ValueError: If scene not found
         """
-        # Check if this is a default scene
-        if scene_id < CUSTOM_SCENE_ID_START:
-            raise ValueError(f"Cannot update default scene (ID: {scene_id})")
-
         # Find the scene
         scene = None
         scene_idx = None
@@ -285,12 +281,8 @@ class SceneManager:
             scene_id: ID of scene to delete
 
         Raises:
-            ValueError: If scene not found or is a default scene
+            ValueError: If scene not found
         """
-        # Check if this is a default scene
-        if scene_id < CUSTOM_SCENE_ID_START:
-            raise ValueError(f"Cannot delete default scene (ID: {scene_id})")
-
         # Find and remove the scene
         initial_count = len(self._custom_scenes)
         self._custom_scenes = [s for s in self._custom_scenes if s["id"] != scene_id]

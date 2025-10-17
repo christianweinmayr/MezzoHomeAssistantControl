@@ -16,27 +16,27 @@ update_scene:
   fields:
     scene_id:
       name: Scene ID
-      description: ID of the scene to update (custom scenes only, ID >= 100)
+      description: ID of the scene to update
       required: true
-      example: 100
+      example: 1
       selector:
         number:
-          min: 100
+          min: 1
           max: 999
           mode: box
 
 delete_scene:
   name: Delete Scene
-  description: Delete a custom scene
+  description: Delete a scene
   fields:
     scene_id:
       name: Scene ID
-      description: ID of the scene to delete (custom scenes only, ID >= 100)
+      description: ID of the scene to delete
       required: true
-      example: 100
+      example: 1
       selector:
         number:
-          min: 100
+          min: 1
           max: 999
           mode: box
 

@@ -47,7 +47,7 @@ async def async_setup_entry(
 
     # Create button entities
     for scene in scenes:
-        # Main scene application button (for all scenes)
+        # Main scene application button
         entities.append(
             MezzoSceneButton(
                 coordinator,
@@ -57,25 +57,24 @@ async def async_setup_entry(
             )
         )
 
-        # Add update/delete buttons for custom scenes only (ID >= 100)
-        if scene["id"] >= 100:
-            entities.append(
-                MezzoSceneUpdateButton(
-                    coordinator,
-                    client,
-                    scene_manager,
-                    entry,
-                    scene,
-                )
+        # Add update/delete buttons for all scenes (all are custom now)
+        entities.append(
+            MezzoSceneUpdateButton(
+                coordinator,
+                client,
+                scene_manager,
+                entry,
+                scene,
             )
-            entities.append(
-                MezzoSceneDeleteButton(
-                    scene_manager,
-                    entry,
-                    scene,
-                    hass,
-                )
+        )
+        entities.append(
+            MezzoSceneDeleteButton(
+                scene_manager,
+                entry,
+                scene,
+                hass,
             )
+        )
 
     async_add_entities(entities, update_before_add=True)
 
