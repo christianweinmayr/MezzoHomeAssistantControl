@@ -172,6 +172,7 @@ PLATFORMS: Final = [
 # Data coordinator key
 COORDINATOR: Final = "coordinator"
 CLIENT: Final = "client"
+SCENE_MANAGER: Final = "scene_manager"
 ENTRY_ID: Final = "entry_id"
 
 # Attributes

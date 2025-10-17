@@ -6,7 +6,7 @@ Provides convenient methods for all control functions.
 """
 import logging
 import struct
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import math
 
 from .udp_manager import UDPManager, UDPBroadcaster
@@ -354,6 +354,145 @@ class MezzoClient:
     # ========================================================================
     # Preset/Scene Management
     # ========================================================================
+
+    async def get_eq_band(self, channel: int, band: int) -> Dict[str, Any]:
+        """
+        Read EQ band configuration from amplifier.
+
+        Args:
+            channel: Channel number (1-4)
+            band: Band number (1-4)
+
+        Returns:
+            Dictionary with EQ band configuration:
+            - enabled: 1 if enabled, 0 if disabled
+            - type: Filter type (0=peaking, 11=low shelf, etc.)
+            - q: Quality factor
+            - slope: Filter slope
+            - frequency: Center frequency in Hz
+            - gain: Linear gain
+
+        Raises:
+            ValueError: If channel or band out of range
+            ConnectionError: If not connected
+            TimeoutError: If request times out
+        """
+        if not 1 <= channel <= NUM_CHANNELS:
+            raise ValueError(f"Channel must be 1-{NUM_CHANNELS}")
+        if not 1 <= band <= NUM_EQ_BANDS:
+            raise ValueError(f"Band must be 1-{NUM_EQ_BANDS}")
+
+        addr = get_user_eq_biquad_address(channel, band)
+        cmd = ReadCommand(addr, EQ_BIQUAD_SIZE)
+        responses = await self._udp.send_request([cmd])
+
+        if responses[0].is_nak():
+            raise ValueError(f"Failed to read EQ band {band} for channel {channel}")
+
+        # Parse BiQuad structure
+        data = responses[0].data
+        enabled, filt_type, q, slope, frequency, gain = struct.unpack('<IIffIf', data)
+
+        return {
+            "enabled": enabled,
+            "type": filt_type,
+            "q": q,
+            "slope": slope,
+            "frequency": frequency,
+            "gain": gain,
+        }
+
+    async def get_all_eq(self) -> List[List[Dict[str, Any]]]:
+        """
+        Read all EQ configurations from amplifier.
+
+        Returns:
+            List of 4 channels, each containing list of 4 bands with EQ config
+
+        Raises:
+            ConnectionError: If not connected
+            TimeoutError: If request times out
+        """
+        # Build multicommand to read all EQ bands at once
+        commands = []
+        for ch in range(1, NUM_CHANNELS + 1):
+            for band in range(1, NUM_EQ_BANDS + 1):
+                addr = get_user_eq_biquad_address(ch, band)
+                commands.append(ReadCommand(addr, EQ_BIQUAD_SIZE))
+
+        _LOGGER.debug("Reading all EQ settings (16 bands)...")
+        responses = await self._udp.send_request(commands)
+
+        # Parse responses into nested structure
+        eq_config = []
+        resp_idx = 0
+
+        for ch in range(NUM_CHANNELS):
+            channel_bands = []
+            for band in range(NUM_EQ_BANDS):
+                resp = responses[resp_idx]
+                resp_idx += 1
+
+                if resp.is_nak():
+                    _LOGGER.warning("Failed to read EQ CH%d Band%d", ch+1, band+1)
+                    # Use default flat EQ
+                    channel_bands.append({
+                        "enabled": 0,
+                        "type": 0,
+                        "q": 1.0,
+                        "slope": 1.0,
+                        "frequency": 1000,
+                        "gain": 1.0,
+                    })
+                else:
+                    # Parse BiQuad structure
+                    data = resp.data
+                    enabled, filt_type, q, slope, frequency, gain = struct.unpack('<IIffIf', data)
+                    channel_bands.append({
+                        "enabled": enabled,
+                        "type": filt_type,
+                        "q": q,
+                        "slope": slope,
+                        "frequency": frequency,
+                        "gain": gain,
+                    })
+
+            eq_config.append(channel_bands)
+
+        return eq_config
+
+    async def capture_current_state(self) -> Dict[str, Any]:
+        """
+        Capture complete current amplifier state for scene creation.
+
+        Reads all volumes, mutes, sources, EQ settings, and standby state.
+
+        Returns:
+            Dictionary with complete scene configuration ready to save
+
+        Raises:
+            ConnectionError: If not connected
+            TimeoutError: If request times out
+        """
+        _LOGGER.info("Capturing current amplifier state...")
+
+        # Get basic state
+        state = await self.get_all_state()
+
+        # Get EQ settings
+        eq_config = await self.get_all_eq()
+
+        # Build scene configuration
+        scene_config = {
+            "volumes": [state['volumes'].get(i, 0.5) for i in range(1, NUM_CHANNELS + 1)],
+            "mutes": [state['mutes'].get(i, False) for i in range(1, NUM_CHANNELS + 1)],
+            "sources": [state['sources'].get(i, 0) for i in range(1, NUM_CHANNELS + 1)],
+            "eq": eq_config,
+            "standby": state.get('standby', False),
+        }
+
+        _LOGGER.info("Captured state: %d channels with full EQ", NUM_CHANNELS)
+        return scene_config
 
     async def apply_scene(self, scene_config: Dict[str, Any]) -> None:
         """

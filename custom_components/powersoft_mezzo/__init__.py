@@ -18,6 +18,7 @@ from .const import (
     PLATFORMS,
     COORDINATOR,
     CLIENT,
+    SCENE_MANAGER,
     CONF_HOST,
     CONF_PORT,
     CONF_TIMEOUT,
@@ -27,6 +28,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
 )
 from .mezzo_client import MezzoClient
+from .scene_manager import SceneManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,12 +62,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Fetch initial data
     await coordinator.async_config_entry_first_refresh()
 
-    # Store coordinator and client
+    # Create and load scene manager
+    scene_manager = SceneManager(hass, entry.entry_id)
+    await scene_manager.async_load()
+    _LOGGER.info(
+        "Scene manager initialized: %d default + %d custom scenes",
+        len(scene_manager.get_all_scenes()) - scene_manager.get_custom_scene_count(),
+        scene_manager.get_custom_scene_count()
+    )
+
+    # Store coordinator, client, and scene manager
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         COORDINATOR: coordinator,
         CLIENT: client,
+        SCENE_MANAGER: scene_manager,
     }
+
+    # Register services (only once for the domain)
+    if not hass.services.has_service(DOMAIN, "save_scene"):
+        await async_register_services(hass)
 
     # Forward entry setup to platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -98,6 +114,160 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry when options change."""
     _LOGGER.info("Reloading Powersoft Mezzo integration due to options update")
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_register_services(hass: HomeAssistant) -> None:
+    """Register integration services."""
+    import voluptuous as vol
+    from homeassistant.helpers import config_validation as cv
+    from homeassistant.helpers.dispatcher import async_dispatcher_send
+
+    _LOGGER.info("Registering Powersoft Mezzo services")
+
+    async def handle_save_scene(call):
+        """Handle save_scene service call."""
+        name = call.data["name"]
+        _LOGGER.info("Service call: save_scene with name='%s'", name)
+
+        # Get the first available entry (services are domain-level, not per-entry)
+        entry_id = next(iter(hass.data[DOMAIN].keys()))
+        data = hass.data[DOMAIN][entry_id]
+        client: MezzoClient = data[CLIENT]
+        scene_manager: SceneManager = data[SCENE_MANAGER]
+
+        try:
+            # Capture current amplifier state
+            config = await client.capture_current_state()
+
+            # Save as new scene
+            scene_id = await scene_manager.async_create_scene(name, config)
+
+            _LOGGER.info("Successfully created scene '%s' (ID: %d)", name, scene_id)
+
+            # Notify button platform to reload
+            async_dispatcher_send(hass, f"{DOMAIN}_scenes_updated_{entry_id}")
+
+        except Exception as err:
+            _LOGGER.error("Failed to save scene '%s': %s", name, err)
+            raise
+
+    async def handle_update_scene(call):
+        """Handle update_scene service call."""
+        scene_id = call.data["scene_id"]
+        _LOGGER.info("Service call: update_scene with scene_id=%d", scene_id)
+
+        # Get the first available entry
+        entry_id = next(iter(hass.data[DOMAIN].keys()))
+        data = hass.data[DOMAIN][entry_id]
+        client: MezzoClient = data[CLIENT]
+        scene_manager: SceneManager = data[SCENE_MANAGER]
+
+        try:
+            # Capture current amplifier state
+            config = await client.capture_current_state()
+
+            # Update existing scene
+            await scene_manager.async_update_scene(scene_id, config)
+
+            _LOGGER.info("Successfully updated scene ID %d", scene_id)
+
+            # Notify button platform to reload
+            async_dispatcher_send(hass, f"{DOMAIN}_scenes_updated_{entry_id}")
+
+        except Exception as err:
+            _LOGGER.error("Failed to update scene %d: %s", scene_id, err)
+            raise
+
+    async def handle_delete_scene(call):
+        """Handle delete_scene service call."""
+        scene_id = call.data["scene_id"]
+        _LOGGER.info("Service call: delete_scene with scene_id=%d", scene_id)
+
+        # Get the first available entry
+        entry_id = next(iter(hass.data[DOMAIN].keys()))
+        data = hass.data[DOMAIN][entry_id]
+        scene_manager: SceneManager = data[SCENE_MANAGER]
+
+        try:
+            # Delete the scene
+            await scene_manager.async_delete_scene(scene_id)
+
+            _LOGGER.info("Successfully deleted scene ID %d", scene_id)
+
+            # Notify button platform to reload
+            async_dispatcher_send(hass, f"{DOMAIN}_scenes_updated_{entry_id}")
+
+        except Exception as err:
+            _LOGGER.error("Failed to delete scene %d: %s", scene_id, err)
+            raise
+
+    async def handle_capture_eq(call):
+        """Handle capture_eq service call (debugging helper)."""
+        _LOGGER.info("Service call: capture_eq")
+
+        # Get the first available entry
+        entry_id = next(iter(hass.data[DOMAIN].keys()))
+        data = hass.data[DOMAIN][entry_id]
+        client: MezzoClient = data[CLIENT]
+
+        try:
+            # Read EQ from amplifier
+            eq_config = await client.get_all_eq()
+
+            # Log the EQ configuration
+            _LOGGER.info("Current EQ configuration:")
+            for ch_idx, channel_eq in enumerate(eq_config):
+                _LOGGER.info("  Channel %d:", ch_idx + 1)
+                for band_idx, band in enumerate(channel_eq):
+                    enabled_str = "ENABLED" if band["enabled"] else "disabled"
+                    _LOGGER.info(
+                        "    Band %d: %s, Type=%d, Freq=%dHz, Gain=%.2f, Q=%.2f",
+                        band_idx + 1,
+                        enabled_str,
+                        band["type"],
+                        band["frequency"],
+                        band["gain"],
+                        band["q"],
+                    )
+
+        except Exception as err:
+            _LOGGER.error("Failed to capture EQ: %s", err)
+            raise
+
+    # Register services
+    hass.services.async_register(
+        DOMAIN,
+        "save_scene",
+        handle_save_scene,
+        schema=vol.Schema({
+            vol.Required("name"): cv.string,
+        }),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "update_scene",
+        handle_update_scene,
+        schema=vol.Schema({
+            vol.Required("scene_id"): cv.positive_int,
+        }),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "delete_scene",
+        handle_delete_scene,
+        schema=vol.Schema({
+            vol.Required("scene_id"): cv.positive_int,
+        }),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "capture_eq",
+        handle_capture_eq,
+        schema=vol.Schema({}),
+    )
 
 
 class MezzoDataUpdateCoordinator(DataUpdateCoordinator):
