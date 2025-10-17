@@ -102,9 +102,63 @@ ADDR_USER_SHADING_CH2 = 0x0000402c  # Float 4 bytes
 ADDR_USER_SHADING_CH3 = 0x00004030  # Float 4 bytes
 ADDR_USER_SHADING_CH4 = 0x00004034  # Float 4 bytes
 
-# User EQ
+# User EQ - 4-band parametric EQ per channel
 ADDR_USER_EQ_START = 0x00004100
 ADDR_USER_EQ_END = 0x00004280
+
+# User EQ Channel 1 (4 BiQuad filters, 24 bytes each)
+ADDR_USER_EQ_CH1_START = 0x00004100
+ADDR_USER_EQ_CH1_BIQUAD1 = 0x00004100  # Band 1: 24 bytes
+ADDR_USER_EQ_CH1_BIQUAD2 = 0x00004118  # Band 2: 24 bytes
+ADDR_USER_EQ_CH1_BIQUAD3 = 0x00004130  # Band 3: 24 bytes
+ADDR_USER_EQ_CH1_BIQUAD4 = 0x00004148  # Band 4: 24 bytes
+ADDR_USER_EQ_CH1_END = 0x00004160
+
+# User EQ Channel 2
+ADDR_USER_EQ_CH2_START = 0x00004160
+ADDR_USER_EQ_CH2_BIQUAD1 = 0x00004160
+ADDR_USER_EQ_CH2_BIQUAD2 = 0x00004178
+ADDR_USER_EQ_CH2_BIQUAD3 = 0x00004190
+ADDR_USER_EQ_CH2_BIQUAD4 = 0x000041A8
+ADDR_USER_EQ_CH2_END = 0x000041C0
+
+# User EQ Channel 3
+ADDR_USER_EQ_CH3_START = 0x000041C0
+ADDR_USER_EQ_CH3_BIQUAD1 = 0x000041C0
+ADDR_USER_EQ_CH3_BIQUAD2 = 0x000041D8
+ADDR_USER_EQ_CH3_BIQUAD3 = 0x000041F0
+ADDR_USER_EQ_CH3_BIQUAD4 = 0x00004208
+ADDR_USER_EQ_CH3_END = 0x00004220
+
+# User EQ Channel 4
+ADDR_USER_EQ_CH4_START = 0x00004220
+ADDR_USER_EQ_CH4_BIQUAD1 = 0x00004220
+ADDR_USER_EQ_CH4_BIQUAD2 = 0x00004238
+ADDR_USER_EQ_CH4_BIQUAD3 = 0x00004250
+ADDR_USER_EQ_CH4_BIQUAD4 = 0x00004268
+ADDR_USER_EQ_CH4_END = 0x00004280
+
+# BiQuad structure (24 bytes per band):
+# +0x00: Enabled (uint32, 4 bytes) - 0=disabled, 1=enabled
+# +0x04: Type (uint32, 4 bytes) - Filter type enum
+# +0x08: Q (Float, 4 bytes) - Quality factor
+# +0x0C: Slope (Float, 4 bytes) - Filter slope
+# +0x10: Frequency (uint32, 4 bytes) - Center frequency in Hz
+# +0x14: Gain (Float, 4 bytes) - Linear gain
+
+# EQ Filter Types
+EQ_TYPE_PEAKING = 0
+EQ_TYPE_LOW_SHELVING = 11
+EQ_TYPE_HIGH_SHELVING = 12
+EQ_TYPE_LOW_PASS = 13
+EQ_TYPE_HIGH_PASS = 14
+EQ_TYPE_BAND_PASS = 15
+EQ_TYPE_BAND_STOP = 16
+EQ_TYPE_ALL_PASS = 17
+
+# Number of EQ bands per channel
+NUM_EQ_BANDS = 4
+EQ_BIQUAD_SIZE = 24  # bytes per BiQuad
 
 
 # ============================================================================
@@ -447,3 +501,30 @@ def get_mute_code_flags_address(channel: int) -> int:
     if not 1 <= channel <= NUM_CHANNELS:
         raise ValueError(f"Channel must be 1-{NUM_CHANNELS}")
     return ADDR_MUTE_CODE_FLAGS_CH1 + ((channel - 1) * 4)
+
+
+def get_user_eq_channel_start(channel: int) -> int:
+    """Get user EQ start address for given channel (1-4)."""
+    if not 1 <= channel <= NUM_CHANNELS:
+        raise ValueError(f"Channel must be 1-{NUM_CHANNELS}")
+    return ADDR_USER_EQ_CH1_START + ((channel - 1) * 0x60)  # 96 bytes per channel (4 bands * 24 bytes)
+
+
+def get_user_eq_biquad_address(channel: int, band: int) -> int:
+    """
+    Get user EQ BiQuad address for given channel (1-4) and band (1-4).
+
+    Args:
+        channel: Channel number (1-4)
+        band: EQ band number (1-4)
+
+    Returns:
+        Memory address of the BiQuad structure
+    """
+    if not 1 <= channel <= NUM_CHANNELS:
+        raise ValueError(f"Channel must be 1-{NUM_CHANNELS}")
+    if not 1 <= band <= NUM_EQ_BANDS:
+        raise ValueError(f"Band must be 1-{NUM_EQ_BANDS}")
+
+    channel_start = get_user_eq_channel_start(channel)
+    return channel_start + ((band - 1) * EQ_BIQUAD_SIZE)

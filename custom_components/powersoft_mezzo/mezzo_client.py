@@ -5,6 +5,7 @@ High-level API for controlling and monitoring Powersoft Mezzo amplifiers.
 Provides convenient methods for all control functions.
 """
 import logging
+import struct
 from typing import Optional, Dict, Any
 import math
 
@@ -52,6 +53,10 @@ from .mezzo_memory_map import (
     get_mute_code_flags_address,
     FAULT_CODES,
     MUTE_CODES,
+    # EQ
+    get_user_eq_biquad_address,
+    NUM_EQ_BANDS,
+    EQ_BIQUAD_SIZE,
     # Misc
     NUM_CHANNELS,
 )
@@ -350,9 +355,137 @@ class MezzoClient:
     # Preset/Scene Management
     # ========================================================================
 
+    async def apply_scene(self, scene_config: Dict[str, Any]) -> None:
+        """
+        Apply a complete scene configuration via multicommand.
+
+        This is the recommended way to load scenes/presets. It applies all
+        configuration changes (volumes, mutes, sources, power) in a single
+        PBus packet for maximum efficiency and atomicity.
+
+        Args:
+            scene_config: Dictionary with scene configuration:
+                - volumes: List[float] - Volume levels 0.0-1.0 for channels 1-4
+                - mutes: List[bool] - Mute states for channels 1-4
+                - sources: List[int] - Source IDs for channels 1-4
+                - eq: List[List[Dict]] - EQ settings (4 channels x 4 bands) (optional)
+                - standby: bool - Standby state (optional)
+
+        Raises:
+            ValueError: If configuration is invalid
+            ConnectionError: If not connected
+            TimeoutError: If request times out
+
+        Example:
+            scene = {
+                "volumes": [0.7, 0.7, 0.5, 0.5],
+                "mutes": [False, False, False, False],
+                "sources": [1, 1, 2, 2],
+                "standby": False
+            }
+            await client.apply_scene(scene)
+        """
+        commands = []
+
+        # Validate configuration
+        if 'volumes' not in scene_config or len(scene_config['volumes']) != NUM_CHANNELS:
+            raise ValueError(f"Scene must contain 'volumes' list with {NUM_CHANNELS} entries")
+        if 'mutes' not in scene_config or len(scene_config['mutes']) != NUM_CHANNELS:
+            raise ValueError(f"Scene must contain 'mutes' list with {NUM_CHANNELS} entries")
+        if 'sources' not in scene_config or len(scene_config['sources']) != NUM_CHANNELS:
+            raise ValueError(f"Scene must contain 'sources' list with {NUM_CHANNELS} entries")
+
+        # Build write commands for all channels
+        for ch in range(1, NUM_CHANNELS + 1):
+            # Volume
+            volume = scene_config['volumes'][ch - 1]
+            if not 0.0 <= volume <= 1.0:
+                raise ValueError(f"Volume for channel {ch} must be between 0.0 and 1.0")
+            addr = get_user_gain_address(ch)
+            commands.append(WriteCommand(addr, float_to_bytes(volume)))
+
+            # Mute
+            muted = scene_config['mutes'][ch - 1]
+            addr = get_user_mute_address(ch)
+            value = MUTE_ON if muted else MUTE_OFF
+            commands.append(WriteCommand(addr, uint8_to_bytes(value)))
+
+            # Source
+            source = scene_config['sources'][ch - 1]
+            if not SOURCE_MIN <= source <= SOURCE_MAX:
+                raise ValueError(f"Source ID for channel {ch} must be {SOURCE_MIN}-{SOURCE_MAX}")
+            addr = get_source_id_address(ch)
+            commands.append(WriteCommand(addr, int32_to_bytes(source)))
+
+        # EQ settings (optional)
+        if 'eq' in scene_config:
+            eq_channels = scene_config['eq']
+            if len(eq_channels) != NUM_CHANNELS:
+                raise ValueError(f"Scene EQ must contain {NUM_CHANNELS} channel configurations")
+
+            for ch in range(1, NUM_CHANNELS + 1):
+                eq_bands = eq_channels[ch - 1]
+                if len(eq_bands) != NUM_EQ_BANDS:
+                    raise ValueError(f"Channel {ch} EQ must contain {NUM_EQ_BANDS} band configurations")
+
+                for band in range(1, NUM_EQ_BANDS + 1):
+                    band_config = eq_bands[band - 1]
+
+                    # Build BiQuad structure (24 bytes):
+                    # +0x00: Enabled (uint32, 4 bytes)
+                    # +0x04: Type (uint32, 4 bytes)
+                    # +0x08: Q (Float, 4 bytes)
+                    # +0x0C: Slope (Float, 4 bytes)
+                    # +0x10: Frequency (uint32, 4 bytes)
+                    # +0x14: Gain (Float, 4 bytes)
+                    biquad_data = struct.pack(
+                        '<IIffIf',  # Little-endian: 2x uint32, 2x float, uint32, float
+                        band_config.get('enabled', 0),
+                        band_config.get('type', 0),
+                        band_config.get('q', 1.0),
+                        band_config.get('slope', 1.0),
+                        band_config.get('frequency', 1000),
+                        band_config.get('gain', 1.0),
+                    )
+
+                    addr = get_user_eq_biquad_address(ch, band)
+                    commands.append(WriteCommand(addr, biquad_data))
+
+        # Power state (optional)
+        if 'standby' in scene_config:
+            standby = scene_config['standby']
+            value = STANDBY_ACTIVATE if standby else STANDBY_DEACTIVATE
+            commands.append(WriteCommand(ADDR_STANDBY_TRIGGER, uint32_to_bytes(value)))
+
+        # Send all changes in single multicommand
+        scene_name = scene_config.get('name', 'Unknown')
+        _LOGGER.info("Applying scene '%s' with %d commands", scene_name, len(commands))
+
+        try:
+            responses = await self._udp.send_request(commands)
+
+            # Check for any NAK responses
+            failed_commands = []
+            for i, response in enumerate(responses):
+                if response.is_nak():
+                    failed_commands.append(i)
+
+            if failed_commands:
+                _LOGGER.warning("Some commands failed in scene application: %s", failed_commands)
+                raise ValueError(f"Scene application partially failed: {len(failed_commands)}/{len(commands)} commands rejected")
+
+            _LOGGER.info("Scene '%s' applied successfully", scene_name)
+
+        except Exception as err:
+            _LOGGER.error("Failed to apply scene '%s': %s", scene_name, err)
+            raise
+
     async def load_preset(self, speaker: int, preset_id: int) -> None:
         """
-        Load preset for speaker.
+        DEPRECATED: Load preset for speaker using old preset type addresses.
+
+        Note: This method uses the deprecated ADDR_PRESET_TYPE_SPK addresses
+        which may not work on newer firmware. Use apply_scene() instead.
 
         Args:
             speaker: Speaker number (1-4)
@@ -363,6 +496,8 @@ class MezzoClient:
             ConnectionError: If not connected
             TimeoutError: If request times out
         """
+        _LOGGER.warning("load_preset() is deprecated. Use apply_scene() instead.")
+
         if not 1 <= speaker <= NUM_CHANNELS:
             raise ValueError(f"Speaker must be 1-{NUM_CHANNELS}")
 
@@ -377,7 +512,10 @@ class MezzoClient:
 
     async def get_preset(self, speaker: int) -> int:
         """
-        Get current preset for speaker.
+        DEPRECATED: Get current preset for speaker.
+
+        Note: This method uses the deprecated ADDR_PRESET_TYPE_SPK addresses
+        which may not work on newer firmware.
 
         Args:
             speaker: Speaker number (1-4)
@@ -390,6 +528,8 @@ class MezzoClient:
             ConnectionError: If not connected
             TimeoutError: If request times out
         """
+        _LOGGER.warning("get_preset() is deprecated.")
+
         if not 1 <= speaker <= NUM_CHANNELS:
             raise ValueError(f"Speaker must be 1-{NUM_CHANNELS}")
 

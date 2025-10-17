@@ -106,17 +106,17 @@
       }
     },
     "button": {
-      "preset_0": {
-        "name": "Preset 1"
+      "scene_0": {
+        "name": "Scene 1"
       },
-      "preset_1": {
-        "name": "Preset 2"
+      "scene_1": {
+        "name": "Scene 2"
       },
-      "preset_2": {
-        "name": "Preset 3"
+      "scene_2": {
+        "name": "Scene 3"
       },
-      "preset_3": {
-        "name": "Preset 4"
+      "scene_3": {
+        "name": "Scene 4"
       }
     }
   }

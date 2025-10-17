@@ -11,19 +11,13 @@ from .const import (
     DOMAIN,
     COORDINATOR,
     CLIENT,
-    UID_PRESET,
+    UID_SCENE,
+    CONF_SCENES,
+    DEFAULT_SCENES,
 )
 from .mezzo_client import MezzoClient
 
 _LOGGER = logging.getLogger(__name__)
-
-# Default presets (can be customized via configuration)
-DEFAULT_PRESETS = [
-    {"id": 0, "name": "Preset 1"},
-    {"id": 1, "name": "Preset 2"},
-    {"id": 2, "name": "Preset 3"},
-    {"id": 3, "name": "Preset 4"},
-]
 
 
 async def async_setup_entry(
@@ -37,56 +31,58 @@ async def async_setup_entry(
 
     entities = []
 
-    # Add preset buttons
-    for preset in DEFAULT_PRESETS:
+    # Get scene configurations from entry options or use defaults
+    scenes = entry.options.get(CONF_SCENES, DEFAULT_SCENES)
+
+    # Add scene buttons
+    for scene in scenes:
         entities.append(
-            MezzoPresetButton(
+            MezzoSceneButton(
                 coordinator,
                 client,
                 entry,
-                preset["id"],
-                preset["name"],
+                scene,
             )
         )
 
     async_add_entities(entities)
 
 
-class MezzoPresetButton(CoordinatorEntity, ButtonEntity):
-    """Representation of a preset button."""
+class MezzoSceneButton(CoordinatorEntity, ButtonEntity):
+    """Representation of a scene button."""
 
     _attr_has_entity_name = True
-    _attr_icon = "mdi:numeric-1-box"
+    _attr_icon = "mdi:palette"
 
     def __init__(
         self,
         coordinator,
         client: MezzoClient,
         entry: ConfigEntry,
-        preset_id: int,
-        preset_name: str,
+        scene_config: dict,
     ):
-        """Initialize the preset button."""
+        """Initialize the scene button."""
         super().__init__(coordinator)
         self._client = client
-        self._preset_id = preset_id
+        self._scene_config = scene_config
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": entry.title,
             "manufacturer": "Powersoft",
             "model": "Mezzo 602 AD",
         }
-        self._attr_unique_id = f"{entry.entry_id}_{UID_PRESET}_{preset_id}"
-        self._attr_name = preset_name
+        self._attr_unique_id = f"{entry.entry_id}_{UID_SCENE}_{scene_config['id']}"
+        self._attr_name = scene_config["name"]
 
     async def async_press(self) -> None:
-        """Handle the button press - load the preset."""
+        """Handle the button press - apply the scene."""
         try:
-            _LOGGER.info("Loading preset %d", self._preset_id)
-            # Load preset for all speakers (channels)
-            for speaker in range(1, 5):  # 4 channels
-                await self._client.load_preset(speaker, self._preset_id)
+            _LOGGER.info("Applying scene: %s", self._scene_config["name"])
+            await self._client.apply_scene(self._scene_config)
+            # Force immediate coordinator refresh to show new state
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            _LOGGER.error("Failed to load preset %d: %s", self._preset_id, err)
+            _LOGGER.error(
+                "Failed to apply scene %s: %s", self._scene_config["name"], err
+            )
             raise
