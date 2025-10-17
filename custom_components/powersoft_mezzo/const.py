@@ -46,6 +46,7 @@ PLATFORMS: Final = [
     "select",
     "sensor",
     "button",
+    "text",
 ]
 
 # Data coordinator key
