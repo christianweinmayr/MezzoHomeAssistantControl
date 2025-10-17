@@ -200,6 +200,30 @@ async def async_register_services(hass: HomeAssistant) -> None:
             _LOGGER.error("Failed to delete scene %d: %s", scene_id, err)
             raise
 
+    async def handle_rename_scene(call):
+        """Handle rename_scene service call."""
+        scene_id = call.data["scene_id"]
+        new_name = call.data["name"]
+        _LOGGER.info("Service call: rename_scene with scene_id=%d, name='%s'", scene_id, new_name)
+
+        # Get the first available entry
+        entry_id = next(iter(hass.data[DOMAIN].keys()))
+        data = hass.data[DOMAIN][entry_id]
+        scene_manager: SceneManager = data[SCENE_MANAGER]
+
+        try:
+            # Rename the scene
+            await scene_manager.async_rename_scene(scene_id, new_name)
+
+            _LOGGER.info("Successfully renamed scene ID %d", scene_id)
+
+            # Reload integration to refresh button names
+            await hass.config_entries.async_reload(entry_id)
+
+        except Exception as err:
+            _LOGGER.error("Failed to rename scene %d: %s", scene_id, err)
+            raise
+
     async def handle_capture_eq(call):
         """Handle capture_eq service call (debugging helper)."""
         _LOGGER.warning("Service call: capture_eq - Reading EQ from amplifier...")
@@ -286,6 +310,16 @@ async def async_register_services(hass: HomeAssistant) -> None:
         handle_delete_scene,
         schema=vol.Schema({
             vol.Required("scene_id"): cv.positive_int,
+        }),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "rename_scene",
+        handle_rename_scene,
+        schema=vol.Schema({
+            vol.Required("scene_id"): cv.positive_int,
+            vol.Required("name"): cv.string,
         }),
     )
 

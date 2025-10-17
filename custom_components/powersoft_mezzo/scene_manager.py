@@ -293,6 +293,40 @@ class SceneManager:
         await self.async_save()
         _LOGGER.info("Deleted scene ID %d", scene_id)
 
+    async def async_rename_scene(self, scene_id: int, new_name: str) -> None:
+        """
+        Rename a scene.
+
+        Args:
+            scene_id: ID of scene to rename
+            new_name: New name for the scene
+
+        Raises:
+            ValueError: If scene not found or name is empty
+        """
+        if not new_name or not new_name.strip():
+            raise ValueError("Scene name cannot be empty")
+
+        # Find the scene
+        scene = None
+        scene_idx = None
+        for idx, s in enumerate(self._custom_scenes):
+            if s["id"] == scene_id:
+                scene = s
+                scene_idx = idx
+                break
+
+        if scene is None:
+            raise ValueError(f"Scene ID {scene_id} not found")
+
+        # Update the name
+        old_name = scene["name"]
+        self._custom_scenes[scene_idx]["name"] = new_name.strip()
+        self._custom_scenes[scene_idx]["updated_at"] = datetime.utcnow().isoformat() + "Z"
+
+        await self.async_save()
+        _LOGGER.info("Renamed scene ID %d from '%s' to '%s'", scene_id, old_name, new_name)
+
     def get_custom_scene_count(self) -> int:
         """Get count of custom scenes."""
         return len(self._custom_scenes)

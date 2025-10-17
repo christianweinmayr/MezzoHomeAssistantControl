@@ -40,6 +40,28 @@ delete_scene:
           max: 999
           mode: box
 
+rename_scene:
+  name: Rename Scene
+  description: Rename an existing scene
+  fields:
+    scene_id:
+      name: Scene ID
+      description: ID of the scene to rename
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 999
+          mode: box
+    name:
+      name: New Name
+      description: New name for the scene
+      required: true
+      example: "My Custom Scene"
+      selector:
+        text:
+
 capture_eq:
   name: Capture EQ Settings
   description: Read and log current EQ settings from amplifier (for debugging)
