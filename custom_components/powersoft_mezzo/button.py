@@ -31,11 +31,21 @@ async def async_setup_entry(
     client = hass.data[DOMAIN][entry.entry_id][CLIENT]
     scene_manager: SceneManager = hass.data[DOMAIN][entry.entry_id][SCENE_MANAGER]
 
+    # Add "Create Scene" button (always visible)
+    entities = [
+        MezzoCreateSceneButton(
+            coordinator,
+            client,
+            scene_manager,
+            entry,
+            hass,
+        )
+    ]
+
     # Get all scenes (default + custom)
     scenes = scene_manager.get_all_scenes()
 
     # Create button entities
-    entities = []
     for scene in scenes:
         # Main scene application button (for all scenes)
         entities.append(
@@ -68,9 +78,18 @@ async def async_setup_entry(
             )
 
     async_add_entities(entities, update_before_add=True)
-    _LOGGER.info("Added %d scene button(s) (%d with management buttons)",
-                 len([e for e in entities if isinstance(e, MezzoSceneButton)]),
-                 len(entities))
+
+    # Count button types for logging
+    scene_buttons = len([e for e in entities if isinstance(e, MezzoSceneButton)])
+    update_buttons = len([e for e in entities if isinstance(e, MezzoSceneUpdateButton)])
+    delete_buttons = len([e for e in entities if isinstance(e, MezzoSceneDeleteButton)])
+    create_buttons = len([e for e in entities if isinstance(e, MezzoCreateSceneButton)])
+
+    _LOGGER.info(
+        "Added %d total button(s): %d scene, %d update, %d delete, %d create",
+        len(entities), scene_buttons, update_buttons, delete_buttons, create_buttons
+    )
+    _LOGGER.info("Custom scenes: %d", scene_manager.get_custom_scene_count())
 
 
 class MezzoSceneButton(CoordinatorEntity, ButtonEntity):
@@ -243,5 +262,84 @@ class MezzoSceneDeleteButton(ButtonEntity):
         except Exception as err:
             _LOGGER.error(
                 "Failed to delete scene %s: %s", self._scene_config["name"], err
+            )
+            raise
+
+
+class MezzoCreateSceneButton(CoordinatorEntity, ButtonEntity):
+    """Button to create a new scene from current amplifier state."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:plus-circle"
+    _attr_entity_category = "config"
+
+    def __init__(
+        self,
+        coordinator,
+        client: MezzoClient,
+        scene_manager: SceneManager,
+        entry: ConfigEntry,
+        hass: HomeAssistant,
+    ):
+        """Initialize the create scene button."""
+        super().__init__(coordinator)
+        self._client = client
+        self._scene_manager = scene_manager
+        self._entry = entry
+        self._hass = hass
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Powersoft",
+            "model": "Mezzo 602 AD",
+        }
+        self._attr_unique_id = f"{entry.entry_id}_create_scene"
+        self._attr_name = "Create Scene from Current State"
+
+    async def async_press(self) -> None:
+        """Handle button press - create new scene from current amp state."""
+        try:
+            from datetime import datetime
+
+            # Generate scene name with timestamp
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            scene_name = f"Scene {timestamp}"
+
+            _LOGGER.info("Creating new scene: %s", scene_name)
+
+            # Capture current amplifier state
+            config = await self._client.capture_current_state()
+
+            # Create the scene
+            scene_id = await self._scene_manager.async_create_scene(scene_name, config)
+
+            _LOGGER.info("Successfully created scene '%s' (ID: %d)", scene_name, scene_id)
+
+            # Create notification to inform user
+            await self._hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Scene Created",
+                    "message": f"Created new scene: '{scene_name}' (ID: {scene_id})\n\n"
+                               f"The scene includes current volumes, mutes, sources, EQ settings, and power state.\n\n"
+                               f"Use the 'Update {scene_name}' button to modify it later.",
+                    "notification_id": f"{DOMAIN}_scene_created_{scene_id}",
+                },
+            )
+
+            # Reload integration to show new buttons
+            await self._hass.config_entries.async_reload(self._entry.entry_id)
+
+        except Exception as err:
+            _LOGGER.error("Failed to create scene: %s", err)
+            await self._hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Scene Creation Failed",
+                    "message": f"Error creating scene: {err}",
+                    "notification_id": f"{DOMAIN}_scene_create_error",
+                },
             )
             raise
