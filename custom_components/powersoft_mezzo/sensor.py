@@ -153,7 +153,6 @@ class MezzoEQSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._client = client
         self._channel = channel
-        self._eq_data = None
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": entry.title,
@@ -166,29 +165,36 @@ class MezzoEQSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> int:
         """Return number of enabled EQ bands."""
-        if self._eq_data:
-            return sum(1 for band in self._eq_data if band.get("enabled", 0))
+        if (self.coordinator.data and
+            'eq' in self.coordinator.data and
+            self._channel in self.coordinator.data['eq']):
+            channel_eq = self.coordinator.data['eq'][self._channel]
+            return sum(1 for band_data in channel_eq.values() if band_data.get("enabled", 0))
         return 0
 
     @property
     def extra_state_attributes(self) -> dict:
         """Return EQ configuration as attributes."""
-        if not self._eq_data:
+        if not (self.coordinator.data and
+                'eq' in self.coordinator.data and
+                self._channel in self.coordinator.data['eq']):
             return {}
 
+        channel_eq = self.coordinator.data['eq'][self._channel]
         attrs = {}
-        for i, band in enumerate(self._eq_data, 1):
-            enabled = bool(band.get("enabled", 0))
-            filt_type = band.get("type", 0)
-            freq = band.get("frequency", 1000)
-            gain = band.get("gain", 1.0)
-            q = band.get("q", 1.0)
+
+        for band_num, band_data in channel_eq.items():
+            enabled = bool(band_data.get("enabled", 0))
+            filt_type = band_data.get("type", 0)
+            freq = band_data.get("frequency", 1000)
+            gain = band_data.get("gain", 1.0)
+            q = band_data.get("q", 1.0)
 
             # Convert gain to dB
             import math
             gain_db = 20 * math.log10(gain) if gain > 0 else -float('inf')
 
-            band_prefix = f"band_{i}"
+            band_prefix = f"band_{band_num}"
             attrs[f"{band_prefix}_enabled"] = enabled
             attrs[f"{band_prefix}_type"] = self.EQ_TYPE_NAMES.get(filt_type, f"Type {filt_type}")
             attrs[f"{band_prefix}_frequency_hz"] = freq
@@ -197,16 +203,3 @@ class MezzoEQSensor(CoordinatorEntity, SensorEntity):
             attrs[f"{band_prefix}_q"] = round(q, 2)
 
         return attrs
-
-    async def async_update(self) -> None:
-        """Fetch EQ data from amplifier."""
-        try:
-            # Read EQ for this specific channel (all 4 bands)
-            eq_bands = []
-            for band in range(1, 5):  # 4 bands per channel
-                band_data = await self._client.get_eq_band(self._channel, band)
-                eq_bands.append(band_data)
-            self._eq_data = eq_bands
-        except Exception as err:
-            _LOGGER.debug("Failed to update EQ for channel %d: %s", self._channel, err)
-            self._eq_data = None

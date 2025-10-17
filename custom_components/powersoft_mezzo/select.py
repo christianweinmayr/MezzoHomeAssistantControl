@@ -140,7 +140,6 @@ class MezzoEQTypeSelect(CoordinatorEntity, SelectEntity):
         self._client = client
         self._channel = channel
         self._band = band
-        self._eq_data = None
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": entry.title,
@@ -154,18 +153,13 @@ class MezzoEQTypeSelect(CoordinatorEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the current filter type."""
-        if self._eq_data:
-            filt_type = self._eq_data.get("type", 0)
+        if (self.coordinator.data and
+            'eq' in self.coordinator.data and
+            self._channel in self.coordinator.data['eq'] and
+            self._band in self.coordinator.data['eq'][self._channel]):
+            filt_type = self.coordinator.data['eq'][self._channel][self._band].get("type", 0)
             return EQ_TYPE_OPTIONS.get(filt_type, f"Type {filt_type}")
         return None
-
-    async def async_update(self) -> None:
-        """Fetch current EQ band state."""
-        try:
-            self._eq_data = await self._client.get_eq_band(self._channel, self._band)
-        except Exception as err:
-            _LOGGER.debug("Failed to read EQ CH%d Band%d: %s", self._channel, self._band, err)
-            self._eq_data = None
 
     async def async_select_option(self, option: str) -> None:
         """Select the filter type."""

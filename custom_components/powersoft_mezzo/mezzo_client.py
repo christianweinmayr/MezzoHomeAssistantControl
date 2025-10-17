@@ -851,7 +851,7 @@ class MezzoClient:
         Get complete amplifier state in a single batch request.
 
         Returns:
-            Dictionary containing all amplifier state
+            Dictionary containing all amplifier state including EQ
 
         Raises:
             ConnectionError: If not connected
@@ -883,6 +883,12 @@ class MezzoClient:
             ReadCommand(ADDR_FAULT_CODE, 1),
         ]
 
+        # Add EQ band read commands (4 channels × 4 bands)
+        for ch in range(1, NUM_CHANNELS + 1):
+            for band in range(1, NUM_EQ_BANDS + 1):
+                addr = get_user_eq_biquad_address(ch, band)
+                commands.append(ReadCommand(addr, EQ_BIQUAD_SIZE))
+
         responses = await self._udp.send_request(commands)
 
         state = {
@@ -892,6 +898,7 @@ class MezzoClient:
             'sources': {},
             'temperatures': {},
             'fault_code': None,
+            'eq': {},  # Store EQ by channel/band: eq[channel][band]
         }
 
         # Parse volumes
@@ -918,6 +925,38 @@ class MezzoClient:
         # Parse fault
         if not responses[15].is_nak():
             state['fault_code'] = bytes_to_uint8(responses[15].data)
+
+        # Parse EQ bands (starting at response index 16)
+        resp_idx = 16
+        for ch in range(1, NUM_CHANNELS + 1):
+            if ch not in state['eq']:
+                state['eq'][ch] = {}
+            for band in range(1, NUM_EQ_BANDS + 1):
+                resp = responses[resp_idx]
+                resp_idx += 1
+
+                if not resp.is_nak():
+                    # Parse BiQuad structure
+                    data = resp.data
+                    enabled, filt_type, q, slope, frequency, gain = struct.unpack('<IIffIf', data)
+                    state['eq'][ch][band] = {
+                        "enabled": enabled,
+                        "type": filt_type,
+                        "q": q,
+                        "slope": slope,
+                        "frequency": frequency,
+                        "gain": gain,
+                    }
+                else:
+                    # Use default if read failed
+                    state['eq'][ch][band] = {
+                        "enabled": 0,
+                        "type": 0,
+                        "q": 1.0,
+                        "slope": 1.0,
+                        "frequency": 1000,
+                        "gain": 1.0,
+                    }
 
         return state
 

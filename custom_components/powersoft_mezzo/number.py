@@ -126,7 +126,6 @@ class MezzoEQFrequencyNumber(CoordinatorEntity, NumberEntity):
         self._client = client
         self._channel = channel
         self._band = band
-        self._eq_data = None
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": entry.title,
@@ -139,17 +138,12 @@ class MezzoEQFrequencyNumber(CoordinatorEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         """Return the current frequency."""
-        if self._eq_data:
-            return float(self._eq_data.get("frequency", 1000))
+        if (self.coordinator.data and
+            'eq' in self.coordinator.data and
+            self._channel in self.coordinator.data['eq'] and
+            self._band in self.coordinator.data['eq'][self._channel]):
+            return float(self.coordinator.data['eq'][self._channel][self._band].get("frequency", 1000))
         return None
-
-    async def async_update(self) -> None:
-        """Fetch current EQ band state."""
-        try:
-            self._eq_data = await self._client.get_eq_band(self._channel, self._band)
-        except Exception as err:
-            _LOGGER.debug("Failed to read EQ CH%d Band%d: %s", self._channel, self._band, err)
-            self._eq_data = None
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the frequency."""
@@ -201,7 +195,6 @@ class MezzoEQGainNumber(CoordinatorEntity, NumberEntity):
         self._client = client
         self._channel = channel
         self._band = band
-        self._eq_data = None
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": entry.title,
@@ -214,21 +207,16 @@ class MezzoEQGainNumber(CoordinatorEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         """Return the current gain in dB."""
-        if self._eq_data:
-            linear_gain = self._eq_data.get("gain", 1.0)
+        if (self.coordinator.data and
+            'eq' in self.coordinator.data and
+            self._channel in self.coordinator.data['eq'] and
+            self._band in self.coordinator.data['eq'][self._channel]):
+            linear_gain = self.coordinator.data['eq'][self._channel][self._band].get("gain", 1.0)
             if linear_gain > 0:
                 return 20 * math.log10(linear_gain)
             else:
                 return -12.0
         return None
-
-    async def async_update(self) -> None:
-        """Fetch current EQ band state."""
-        try:
-            self._eq_data = await self._client.get_eq_band(self._channel, self._band)
-        except Exception as err:
-            _LOGGER.debug("Failed to read EQ CH%d Band%d: %s", self._channel, self._band, err)
-            self._eq_data = None
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the gain in dB."""
@@ -282,7 +270,6 @@ class MezzoEQQNumber(CoordinatorEntity, NumberEntity):
         self._client = client
         self._channel = channel
         self._band = band
-        self._eq_data = None
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": entry.title,
@@ -295,17 +282,12 @@ class MezzoEQQNumber(CoordinatorEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         """Return the current Q factor."""
-        if self._eq_data:
-            return self._eq_data.get("q", 1.0)
+        if (self.coordinator.data and
+            'eq' in self.coordinator.data and
+            self._channel in self.coordinator.data['eq'] and
+            self._band in self.coordinator.data['eq'][self._channel]):
+            return self.coordinator.data['eq'][self._channel][self._band].get("q", 1.0)
         return None
-
-    async def async_update(self) -> None:
-        """Fetch current EQ band state."""
-        try:
-            self._eq_data = await self._client.get_eq_band(self._channel, self._band)
-        except Exception as err:
-            _LOGGER.debug("Failed to read EQ CH%d Band%d: %s", self._channel, self._band, err)
-            self._eq_data = None
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the Q factor."""

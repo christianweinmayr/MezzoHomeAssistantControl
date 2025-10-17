@@ -166,7 +166,6 @@ class MezzoEQBandSwitch(CoordinatorEntity, SwitchEntity):
         self._client = client
         self._channel = channel
         self._band = band
-        self._eq_data = None
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": entry.title,
@@ -179,17 +178,12 @@ class MezzoEQBandSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         """Return true if the EQ band is enabled."""
-        if self._eq_data:
-            return bool(self._eq_data.get("enabled", 0))
+        if (self.coordinator.data and
+            'eq' in self.coordinator.data and
+            self._channel in self.coordinator.data['eq'] and
+            self._band in self.coordinator.data['eq'][self._channel]):
+            return bool(self.coordinator.data['eq'][self._channel][self._band].get("enabled", 0))
         return None
-
-    async def async_update(self) -> None:
-        """Fetch current EQ band state."""
-        try:
-            self._eq_data = await self._client.get_eq_band(self._channel, self._band)
-        except Exception as err:
-            _LOGGER.debug("Failed to read EQ CH%d Band%d: %s", self._channel, self._band, err)
-            self._eq_data = None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable the EQ band."""
