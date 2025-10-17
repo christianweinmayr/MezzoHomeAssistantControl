@@ -17,6 +17,7 @@ from .const import (
     CHANNEL_NUMBERS,
 )
 from .mezzo_client import MezzoClient
+from .mezzo_memory_map import NUM_EQ_BANDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,7 +40,13 @@ async def async_setup_entry(
     for channel in CHANNEL_NUMBERS:
         entities.append(MezzoMuteSwitch(coordinator, client, entry, channel))
 
+    # Add EQ band enable switches for each channel and band
+    for channel in CHANNEL_NUMBERS:
+        for band in range(1, NUM_EQ_BANDS + 1):
+            entities.append(MezzoEQBandSwitch(coordinator, client, entry, channel, band))
+
     async_add_entities(entities)
+    _LOGGER.info("Added %d switch entities (power, mutes, EQ bands)", len(entities))
 
 
 class MezzoPowerSwitch(CoordinatorEntity, SwitchEntity):
@@ -137,4 +144,93 @@ class MezzoMuteSwitch(CoordinatorEntity, SwitchEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to unmute channel %d: %s", self._channel, err)
+            raise
+
+
+class MezzoEQBandSwitch(CoordinatorEntity, SwitchEntity):
+    """Representation of an EQ band enable/disable switch."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:equalizer"
+
+    def __init__(
+        self,
+        coordinator,
+        client: MezzoClient,
+        entry: ConfigEntry,
+        channel: int,
+        band: int,
+    ):
+        """Initialize the EQ band switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._channel = channel
+        self._band = band
+        self._eq_data = None
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Powersoft",
+            "model": "Mezzo 602 AD",
+        }
+        self._attr_unique_id = f"{entry.entry_id}_eq_ch{channel}_band{band}_enable"
+        self._attr_name = f"EQ Channel {channel} Band {band} Enable"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the EQ band is enabled."""
+        if self._eq_data:
+            return bool(self._eq_data.get("enabled", 0))
+        return None
+
+    async def async_update(self) -> None:
+        """Fetch current EQ band state."""
+        try:
+            self._eq_data = await self._client.get_eq_band(self._channel, self._band)
+        except Exception as err:
+            _LOGGER.debug("Failed to read EQ CH%d Band%d: %s", self._channel, self._band, err)
+            self._eq_data = None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable the EQ band."""
+        try:
+            # Read current settings
+            current = await self._client.get_eq_band(self._channel, self._band)
+
+            # Write back with enabled=1
+            await self._client.set_eq_band(
+                self._channel,
+                self._band,
+                enabled=1,
+                filt_type=current["type"],
+                q=current["q"],
+                slope=current["slope"],
+                frequency=current["frequency"],
+                gain=current["gain"],
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to enable EQ CH%d Band%d: %s", self._channel, self._band, err)
+            raise
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable the EQ band."""
+        try:
+            # Read current settings
+            current = await self._client.get_eq_band(self._channel, self._band)
+
+            # Write back with enabled=0
+            await self._client.set_eq_band(
+                self._channel,
+                self._band,
+                enabled=0,
+                filt_type=current["type"],
+                q=current["q"],
+                slope=current["slope"],
+                frequency=current["frequency"],
+                gain=current["gain"],
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to disable EQ CH%d Band%d: %s", self._channel, self._band, err)
             raise

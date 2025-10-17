@@ -355,6 +355,61 @@ class MezzoClient:
     # Preset/Scene Management
     # ========================================================================
 
+    async def set_eq_band(
+        self,
+        channel: int,
+        band: int,
+        enabled: int,
+        filt_type: int,
+        q: float,
+        slope: float,
+        frequency: int,
+        gain: float
+    ) -> None:
+        """
+        Write EQ band configuration to amplifier.
+
+        Args:
+            channel: Channel number (1-4)
+            band: Band number (1-4)
+            enabled: 1 if enabled, 0 if disabled
+            filt_type: Filter type (0=peaking, 11=low shelf, etc.)
+            q: Quality factor
+            slope: Filter slope
+            frequency: Center frequency in Hz
+            gain: Linear gain value
+
+        Raises:
+            ValueError: If channel or band out of range
+            ConnectionError: If not connected
+            TimeoutError: If request times out
+        """
+        if not 1 <= channel <= NUM_CHANNELS:
+            raise ValueError(f"Channel must be 1-{NUM_CHANNELS}")
+        if not 1 <= band <= NUM_EQ_BANDS:
+            raise ValueError(f"Band must be 1-{NUM_EQ_BANDS}")
+
+        # Pack BiQuad structure (24 bytes)
+        biquad_data = struct.pack(
+            '<IIffIf',  # Little-endian
+            enabled,
+            filt_type,
+            q,
+            slope,
+            frequency,
+            gain,
+        )
+
+        addr = get_user_eq_biquad_address(channel, band)
+        cmd = WriteCommand(addr, biquad_data)
+
+        _LOGGER.debug("Setting EQ CH%d Band%d: enabled=%d, type=%d, freq=%dHz, gain=%.2f",
+                     channel, band, enabled, filt_type, frequency, gain)
+        responses = await self._udp.send_request([cmd])
+
+        if responses[0].is_nak():
+            raise ValueError(f"Failed to write EQ band {band} for channel {channel}")
+
     async def get_eq_band(self, channel: int, band: int) -> Dict[str, Any]:
         """
         Read EQ band configuration from amplifier.
