@@ -37,6 +37,7 @@ async def async_setup_entry(
     # Create button entities
     entities = []
     for scene in scenes:
+        # Main scene application button (for all scenes)
         entities.append(
             MezzoSceneButton(
                 coordinator,
@@ -46,8 +47,30 @@ async def async_setup_entry(
             )
         )
 
+        # Add update/delete buttons for custom scenes only (ID >= 100)
+        if scene["id"] >= 100:
+            entities.append(
+                MezzoSceneUpdateButton(
+                    coordinator,
+                    client,
+                    scene_manager,
+                    entry,
+                    scene,
+                )
+            )
+            entities.append(
+                MezzoSceneDeleteButton(
+                    scene_manager,
+                    entry,
+                    scene,
+                    hass,
+                )
+            )
+
     async_add_entities(entities, update_before_add=True)
-    _LOGGER.info("Added %d scene button(s)", len(entities))
+    _LOGGER.info("Added %d scene button(s) (%d with management buttons)",
+                 len([e for e in entities if isinstance(e, MezzoSceneButton)]),
+                 len(entities))
 
 
 class MezzoSceneButton(CoordinatorEntity, ButtonEntity):
@@ -114,5 +137,111 @@ class MezzoSceneButton(CoordinatorEntity, ButtonEntity):
         except Exception as err:
             _LOGGER.error(
                 "Failed to apply scene %s: %s", self._scene_config["name"], err
+            )
+            raise
+
+
+class MezzoSceneUpdateButton(CoordinatorEntity, ButtonEntity):
+    """Button to update a custom scene with current amplifier state."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:content-save-edit"
+    _attr_entity_category = "config"
+
+    def __init__(
+        self,
+        coordinator,
+        client: MezzoClient,
+        scene_manager: SceneManager,
+        entry: ConfigEntry,
+        scene_config: dict,
+    ):
+        """Initialize the update button."""
+        super().__init__(coordinator)
+        self._client = client
+        self._scene_manager = scene_manager
+        self._scene_config = scene_config
+        self._entry = entry
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Powersoft",
+            "model": "Mezzo 602 AD",
+        }
+        self._attr_unique_id = f"{entry.entry_id}_{UID_SCENE}_{scene_config['id']}_update"
+        self._attr_name = f"Update {scene_config['name']}"
+
+    async def async_press(self) -> None:
+        """Handle button press - update the scene with current amp state."""
+        try:
+            _LOGGER.info("Updating scene: %s", self._scene_config["name"])
+
+            # Capture current amplifier state
+            config = await self._client.capture_current_state()
+
+            # Update the scene
+            await self._scene_manager.async_update_scene(
+                self._scene_config["id"], config
+            )
+
+            _LOGGER.info("Successfully updated scene '%s'", self._scene_config["name"])
+
+            # Reload integration to refresh all buttons
+            await self.hass.config_entries.async_reload(self._entry.entry_id)
+
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to update scene %s: %s", self._scene_config["name"], err
+            )
+            raise
+
+
+class MezzoSceneDeleteButton(ButtonEntity):
+    """Button to delete a custom scene."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:delete"
+    _attr_entity_category = "config"
+
+    def __init__(
+        self,
+        scene_manager: SceneManager,
+        entry: ConfigEntry,
+        scene_config: dict,
+        hass: HomeAssistant,
+    ):
+        """Initialize the delete button."""
+        self._scene_manager = scene_manager
+        self._scene_config = scene_config
+        self._entry = entry
+        self._hass = hass
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Powersoft",
+            "model": "Mezzo 602 AD",
+        }
+        self._attr_unique_id = f"{entry.entry_id}_{UID_SCENE}_{scene_config['id']}_delete"
+        self._attr_name = f"Delete {scene_config['name']}"
+
+    async def async_press(self) -> None:
+        """Handle button press - delete the scene."""
+        try:
+            scene_name = self._scene_config["name"]
+            scene_id = self._scene_config["id"]
+
+            _LOGGER.warning("Deleting scene '%s' (ID: %d)", scene_name, scene_id)
+
+            # Delete the scene
+            await self._scene_manager.async_delete_scene(scene_id)
+
+            _LOGGER.info("Successfully deleted scene '%s'", scene_name)
+
+            # Reload integration to refresh all buttons
+            await self._hass.config_entries.async_reload(self._entry.entry_id)
+
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to delete scene %s: %s", self._scene_config["name"], err
             )
             raise
