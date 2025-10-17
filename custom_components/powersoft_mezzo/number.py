@@ -180,7 +180,8 @@ class MezzoEQGainNumber(CoordinatorEntity, NumberEntity):
     _attr_native_max_value = 15.0
     _attr_native_step = 0.1
     _attr_native_unit_of_measurement = "dB"
-    _attr_mode = NumberMode.SLIDER
+    _attr_mode = NumberMode.AUTO
+    _attr_suggested_display_precision = 1
 
     def __init__(
         self,
@@ -213,7 +214,7 @@ class MezzoEQGainNumber(CoordinatorEntity, NumberEntity):
             self._band in self.coordinator.data['eq'][self._channel]):
             # Gain is already stored in dB, no conversion needed
             gain_db = self.coordinator.data['eq'][self._channel][self._band].get("gain", 0.0)
-            return float(gain_db)
+            return round(float(gain_db), 1)
         return None
 
     async def async_set_native_value(self, value: float) -> None:
@@ -250,7 +251,8 @@ class MezzoEQQNumber(CoordinatorEntity, NumberEntity):
     _attr_native_min_value = 0.1
     _attr_native_max_value = 10.0
     _attr_native_step = 0.1
-    _attr_mode = NumberMode.SLIDER
+    _attr_mode = NumberMode.AUTO
+    _attr_suggested_display_precision = 1
 
     def __init__(
         self,
@@ -281,7 +283,8 @@ class MezzoEQQNumber(CoordinatorEntity, NumberEntity):
             'eq' in self.coordinator.data and
             self._channel in self.coordinator.data['eq'] and
             self._band in self.coordinator.data['eq'][self._channel]):
-            return self.coordinator.data['eq'][self._channel][self._band].get("q", 1.0)
+            q = self.coordinator.data['eq'][self._channel][self._band].get("q", 1.0)
+            return round(float(q), 1)
         return None
 
     async def async_set_native_value(self, value: float) -> None:
