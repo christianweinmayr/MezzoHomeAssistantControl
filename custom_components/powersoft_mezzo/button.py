@@ -118,7 +118,7 @@ class MezzoSceneButton(CoordinatorEntity, ButtonEntity):
             "model": "Mezzo 602 AD",
         }
         self._attr_unique_id = f"{entry.entry_id}_{UID_SCENE}_{scene_config['id']}"
-        self._attr_name = scene_config["name"]
+        self._attr_name = f"Scene - {scene_config['name']}"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -194,7 +194,7 @@ class MezzoSceneUpdateButton(CoordinatorEntity, ButtonEntity):
             "model": "Mezzo 602 AD",
         }
         self._attr_unique_id = f"{entry.entry_id}_{UID_SCENE}_{scene_config['id']}_update"
-        self._attr_name = f"Update {scene_config['name']}"
+        self._attr_name = f"Scene - Update '{scene_config['name']}'"
 
     async def async_press(self) -> None:
         """Handle button press - update the scene with current amp state."""
@@ -247,7 +247,7 @@ class MezzoSceneDeleteButton(ButtonEntity):
             "model": "Mezzo 602 AD",
         }
         self._attr_unique_id = f"{entry.entry_id}_{UID_SCENE}_{scene_config['id']}_delete"
-        self._attr_name = f"Delete {scene_config['name']}"
+        self._attr_name = f"Scene - Delete '{scene_config['name']}'"
 
     async def async_press(self) -> None:
         """Handle button press - delete the scene."""
@@ -300,7 +300,7 @@ class MezzoCreateSceneButton(CoordinatorEntity, ButtonEntity):
             "model": "Mezzo 602 AD",
         }
         self._attr_unique_id = f"{entry.entry_id}_create_scene"
-        self._attr_name = "Create Scene from Current State"
+        self._attr_name = "Scene - Create New"
 
     async def async_press(self) -> None:
         """Handle button press - create new scene from current amp state."""
