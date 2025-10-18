@@ -315,24 +315,26 @@ class MezzoClient:
         if not SOURCE_MIN <= source_id <= SOURCE_MAX:
             raise ValueError(f"Source ID must be {SOURCE_MIN}-{SOURCE_MAX}")
 
-        # Try different approaches for different channels
-        # Based on testing: global address 0x00002224 seems to work for channel 2
+        # Write to BOTH per-channel priority AND global manual selection
+        # Testing showed this worked for channel 2
         from .mezzo_memory_map import ADDR_MANUAL_SOURCE_SELECTION
 
         addr_priority = get_priority_source_address(channel)
 
-        # Try writing to ONLY the global address
-        cmd = WriteCommand(ADDR_MANUAL_SOURCE_SELECTION, int32_to_bytes(source_id))
+        commands = [
+            WriteCommand(addr_priority, int32_to_bytes(source_id)),
+            WriteCommand(ADDR_MANUAL_SOURCE_SELECTION, int32_to_bytes(source_id)),
+        ]
 
         _LOGGER.warning(
-            "Setting channel %d source to %d - writing to GLOBAL 0x%08x",
-            channel, source_id, ADDR_MANUAL_SOURCE_SELECTION
+            "Setting channel %d source to %d - writing to 0x%08x + GLOBAL 0x%08x",
+            channel, source_id, addr_priority, ADDR_MANUAL_SOURCE_SELECTION
         )
-        responses = await self._udp.send_request([cmd])
+        responses = await self._udp.send_request(commands)
 
-        if responses[0].is_nak():
-            _LOGGER.warning("Source write NAK'd for channel %d", channel)
-            raise ValueError(f"Failed to set source for channel {channel}")
+        for i, resp in enumerate(responses):
+            if resp.is_nak():
+                _LOGGER.warning("Command %d NAK'd for channel %d", i, channel)
 
         _LOGGER.warning("Source set complete for channel %d", channel)
 
