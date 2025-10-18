@@ -70,6 +70,21 @@ disable_manual_source_mode:
   name: Disable Manual Source Mode
   description: Emergency fix to restore automatic source routing. Use this if channel 1 is silent after changing sources. This writes 0 to the manual source selection register to disable manual override mode.
 
+enable_manual_source_mode:
+  name: Enable Manual Source Mode
+  description: Emergency recovery to force ALL channels to use the same source. Use this when automatic routing fails and channels are silent. WARNING - This overrides all per-channel source settings.
+  fields:
+    source_id:
+      name: Source ID
+      description: Source to use for ALL channels (-1=muted, 0-31=sources)
+      required: true
+      example: 2
+      selector:
+        number:
+          min: -1
+          max: 31
+          mode: box
+
 read_source_registers:
   name: Read Source Registers
   description: Diagnostic tool to read and display all source-related registers. Shows current source ID status, priority source settings, and manual source selection mode for all channels.

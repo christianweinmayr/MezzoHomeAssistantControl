@@ -361,6 +361,37 @@ class MezzoClient:
 
         _LOGGER.warning("Manual source mode disabled successfully")
 
+    async def enable_manual_source_mode(self, source_id: int) -> None:
+        """
+        Enable manual source selection mode with a specific source.
+
+        This forces ALL channels to use the same source.
+        Use this as an emergency recovery when automatic routing fails.
+
+        Args:
+            source_id: Source ID to use for all channels (0-31)
+
+        Raises:
+            ValueError: If source_id out of range
+            ConnectionError: If not connected
+            TimeoutError: If request times out
+        """
+        if not SOURCE_MIN <= source_id <= SOURCE_MAX:
+            raise ValueError(f"Source ID must be {SOURCE_MIN}-{SOURCE_MAX}")
+
+        from .mezzo_memory_map import ADDR_MANUAL_SOURCE_SELECTION
+
+        cmd = WriteCommand(ADDR_MANUAL_SOURCE_SELECTION, int32_to_bytes(source_id))
+
+        _LOGGER.warning("Enabling manual source selection mode with source %d (writing to 0x%08x)",
+                       source_id, ADDR_MANUAL_SOURCE_SELECTION)
+        responses = await self._udp.send_request([cmd])
+
+        if responses[0].is_nak():
+            raise ValueError("Failed to enable manual source mode")
+
+        _LOGGER.warning("Manual source mode enabled successfully with source %d", source_id)
+
     async def read_all_source_registers(self) -> dict:
         """
         Read all source-related registers for diagnostics.

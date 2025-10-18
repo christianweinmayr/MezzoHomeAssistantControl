@@ -387,6 +387,46 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
             raise
 
+    async def handle_enable_manual_source_mode(call):
+        """Handle enable_manual_source_mode service call (emergency recovery)."""
+        source_id = call.data["source_id"]
+        _LOGGER.warning("Service call: enable_manual_source_mode with source_id=%d", source_id)
+
+        # Get the first available entry
+        entry_id = next(iter(hass.data[DOMAIN].keys()))
+        data = hass.data[DOMAIN][entry_id]
+        client: MezzoClient = data[CLIENT]
+
+        try:
+            # Enable manual source mode with specific source
+            await client.enable_manual_source_mode(source_id)
+
+            # Create success notification
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Manual Source Mode Enabled",
+                    "message": f"Successfully enabled manual source mode. ALL channels are now forced to source {source_id}. This overrides per-channel settings.",
+                    "notification_id": f"{DOMAIN}_enable_manual_source_mode",
+                },
+            )
+
+            _LOGGER.warning("Manual source mode enabled successfully with source %d.", source_id)
+
+        except Exception as err:
+            _LOGGER.error("Failed to enable manual source mode: %s", err)
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Manual Source Mode Enable Failed",
+                    "message": f"Error enabling manual source mode: {err}",
+                    "notification_id": f"{DOMAIN}_enable_manual_source_mode_error",
+                },
+            )
+            raise
+
     # Register services
     hass.services.async_register(
         DOMAIN,
@@ -437,6 +477,15 @@ async def async_register_services(hass: HomeAssistant) -> None:
         "disable_manual_source_mode",
         handle_disable_manual_source_mode,
         schema=vol.Schema({}),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "enable_manual_source_mode",
+        handle_enable_manual_source_mode,
+        schema=vol.Schema({
+            vol.Required("source_id"): vol.All(vol.Coerce(int), vol.Range(min=-1, max=31)),
+        }),
     )
 
     hass.services.async_register(
