@@ -180,13 +180,14 @@ class MezzoClient:
         if responses[0].is_nak():
             raise ValueError(f"Failed to set volume for channel {channel}")
 
-    async def get_volume(self, channel: int, use_user_gain: bool = True) -> float:
+    async def get_volume(self, channel: int, use_user_gain: bool = False) -> float:
         """
         Get channel volume/gain.
 
         Args:
             channel: Channel number (1-4)
             use_user_gain: Read from user gain area (True) or zone gain area (False)
+                          Default False - zone gain is the writable register we should read
 
         Returns:
             Volume level 0.0-1.0 (linear gain)
@@ -199,7 +200,9 @@ class MezzoClient:
         if not 1 <= channel <= NUM_CHANNELS:
             raise ValueError(f"Channel must be 1-{NUM_CHANNELS}")
 
-        addr = get_user_gain_address(channel) if use_user_gain else get_zone_gain_address(channel)
+        # IMPORTANT: Read from zone_gain (same register we write to)
+        # User_gain appears to be a display/status register that may not reflect writes
+        addr = get_zone_gain_address(channel)
         cmd = ReadCommand(addr, 4)
         responses = await self._udp.send_request([cmd])
 
@@ -988,11 +991,11 @@ class MezzoClient:
         commands = [
             # Power
             ReadCommand(ADDR_STANDBY_STATE, 4),
-            # Volumes (all channels)
-            ReadCommand(get_user_gain_address(1), 4),
-            ReadCommand(get_user_gain_address(2), 4),
-            ReadCommand(get_user_gain_address(3), 4),
-            ReadCommand(get_user_gain_address(4), 4),
+            # Volumes (all channels) - read from zone_gain (writable register)
+            ReadCommand(get_zone_gain_address(1), 4),
+            ReadCommand(get_zone_gain_address(2), 4),
+            ReadCommand(get_zone_gain_address(3), 4),
+            ReadCommand(get_zone_gain_address(4), 4),
             # Mutes (all channels)
             ReadCommand(get_user_mute_address(1), 1),
             ReadCommand(get_user_mute_address(2), 1),
