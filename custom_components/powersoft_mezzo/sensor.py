@@ -134,7 +134,6 @@ class MezzoEQSensor(CoordinatorEntity, SensorEntity):
     """Representation of EQ configuration sensor for a channel."""
 
     _attr_has_entity_name = True
-    _attr_icon = "mdi:equalizer"
 
     # Map EQ filter types to human-readable names
     EQ_TYPE_NAMES = {
@@ -163,14 +162,36 @@ class MezzoEQSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"EQ Channel {channel}"
 
     @property
-    def native_value(self) -> int:
-        """Return number of enabled EQ bands."""
+    def icon(self) -> str:
+        """Return dynamic icon based on EQ state."""
         if (self.coordinator.data and
             'eq' in self.coordinator.data and
             self._channel in self.coordinator.data['eq']):
             channel_eq = self.coordinator.data['eq'][self._channel]
-            return sum(1 for band_data in channel_eq.values() if band_data.get("enabled", 0))
-        return 0
+            enabled_count = sum(1 for band_data in channel_eq.values() if band_data.get("enabled", 0))
+            if enabled_count == 0:
+                return "mdi:equalizer-outline"
+            else:
+                return "mdi:equalizer"
+        return "mdi:equalizer-outline"
+
+    @property
+    def native_value(self) -> str:
+        """Return description of enabled EQ bands."""
+        if (self.coordinator.data and
+            'eq' in self.coordinator.data and
+            self._channel in self.coordinator.data['eq']):
+            channel_eq = self.coordinator.data['eq'][self._channel]
+            enabled_bands = [str(band_num) for band_num, band_data in channel_eq.items()
+                           if band_data.get("enabled", 0)]
+
+            if not enabled_bands:
+                return "No EQ"
+            elif len(enabled_bands) == 4:
+                return "All bands active"
+            else:
+                return f"Bands {', '.join(enabled_bands)}"
+        return "Unknown"
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -183,6 +204,13 @@ class MezzoEQSensor(CoordinatorEntity, SensorEntity):
         channel_eq = self.coordinator.data['eq'][self._channel]
         attrs = {}
 
+        # Add summary information
+        enabled_bands = [band_num for band_num, band_data in channel_eq.items()
+                        if band_data.get("enabled", 0)]
+        attrs["enabled_count"] = len(enabled_bands)
+        attrs["enabled_bands"] = enabled_bands if enabled_bands else None
+
+        # Add detailed information for each band
         for band_num, band_data in channel_eq.items():
             enabled = bool(band_data.get("enabled", 0))
             filt_type = band_data.get("type", 0)
@@ -194,7 +222,14 @@ class MezzoEQSensor(CoordinatorEntity, SensorEntity):
             attrs[f"{band_prefix}_enabled"] = enabled
             attrs[f"{band_prefix}_type"] = self.EQ_TYPE_NAMES.get(filt_type, f"Type {filt_type}")
             attrs[f"{band_prefix}_frequency_hz"] = freq
-            attrs[f"{band_prefix}_gain_db"] = round(gain_db, 2)
-            attrs[f"{band_prefix}_q"] = round(q, 2)
+            attrs[f"{band_prefix}_gain_db"] = round(gain_db, 1)
+            attrs[f"{band_prefix}_q"] = round(q, 1)
+
+            # Add a human-readable summary for enabled bands
+            if enabled:
+                type_name = self.EQ_TYPE_NAMES.get(filt_type, f"Type {filt_type}")
+                attrs[f"{band_prefix}_summary"] = (
+                    f"{type_name}: {freq}Hz, {gain_db:+.1f}dB, Q={q:.1f}"
+                )
 
         return attrs
