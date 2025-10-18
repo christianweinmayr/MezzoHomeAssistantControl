@@ -5,6 +5,7 @@ import math
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -112,6 +113,7 @@ class MezzoEQFrequencyNumber(CoordinatorEntity, NumberEntity):
     _attr_native_step = 1.0
     _attr_native_unit_of_measurement = "Hz"
     _attr_mode = NumberMode.BOX
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
         self,
@@ -182,6 +184,7 @@ class MezzoEQGainNumber(CoordinatorEntity, NumberEntity):
     _attr_native_unit_of_measurement = "dB"
     _attr_mode = NumberMode.AUTO
     _attr_suggested_display_precision = 1
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
         self,
@@ -253,6 +256,7 @@ class MezzoEQQNumber(CoordinatorEntity, NumberEntity):
     _attr_native_step = 0.1
     _attr_mode = NumberMode.AUTO
     _attr_suggested_display_precision = 1
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
         self,
