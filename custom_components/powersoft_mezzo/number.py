@@ -55,7 +55,7 @@ class MezzoVolumeNumber(CoordinatorEntity, NumberEntity):
     _attr_icon = "mdi:volume-high"
     _attr_native_min_value = 0.0
     _attr_native_max_value = 100.0
-    _attr_native_step = 1.0
+    _attr_native_step = 0.1
     _attr_native_unit_of_measurement = "%"
     _attr_mode = NumberMode.SLIDER
 
@@ -81,12 +81,12 @@ class MezzoVolumeNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return the current volume (0-100%)."""
+        """Return the current volume (0-100%), rounded to 1 decimal place."""
         if self.coordinator.data and "volumes" in self.coordinator.data:
             # Convert linear gain (0.0-1.0) to percentage (0-100)
             linear_gain = self.coordinator.data["volumes"].get(self._channel)
             if linear_gain is not None:
-                return linear_gain * 100.0
+                return round(linear_gain * 100.0, 1)
         return None
 
     async def async_set_native_value(self, value: float) -> None:
