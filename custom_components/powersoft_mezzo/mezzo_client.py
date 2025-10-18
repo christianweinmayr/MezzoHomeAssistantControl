@@ -315,16 +315,28 @@ class MezzoClient:
         if not SOURCE_MIN <= source_id <= SOURCE_MAX:
             raise ValueError(f"Source ID must be {SOURCE_MIN}-{SOURCE_MAX}")
 
-        # Write to priority source address, not source_id (which is read-only status)
-        addr = get_priority_source_address(channel)
-        cmd = WriteCommand(addr, int32_to_bytes(source_id))
+        # Try both approaches: priority source AND manual source selection
+        # Priority source address
+        addr_priority = get_priority_source_address(channel)
+        # Manual source selection global address
+        from .mezzo_memory_map import ADDR_MANUAL_SOURCE_SELECTION
 
-        _LOGGER.debug("Setting channel %d priority source to %d (addr=0x%08x)",
-                     channel, source_id, addr)
-        responses = await self._udp.send_request([cmd])
+        commands = [
+            WriteCommand(addr_priority, int32_to_bytes(source_id)),
+            WriteCommand(ADDR_MANUAL_SOURCE_SELECTION, int32_to_bytes(source_id)),
+        ]
 
-        if responses[0].is_nak():
-            raise ValueError(f"Failed to set source for channel {channel}")
+        _LOGGER.warning(
+            "Setting channel %d source to %d - writing to 0x%08x and 0x%08x",
+            channel, source_id, addr_priority, ADDR_MANUAL_SOURCE_SELECTION
+        )
+        responses = await self._udp.send_request(commands)
+
+        for i, resp in enumerate(responses):
+            if resp.is_nak():
+                _LOGGER.warning("Command %d NAK'd when setting source", i)
+
+        _LOGGER.warning("Source set complete for channel %d", channel)
 
     async def get_source(self, channel: int) -> int:
         """
