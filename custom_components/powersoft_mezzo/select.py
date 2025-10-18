@@ -199,8 +199,13 @@ class MezzoSourceSelect(CoordinatorEntity, SelectEntity):
                 _LOGGER.error("Unknown source option: %s", option)
                 return
 
+            _LOGGER.warning(
+                "Setting channel %d source to %d (%s)",
+                self._channel, source_id, option
+            )
             await self._client.set_source(self._channel, source_id)
             await self.coordinator.async_request_refresh()
+            _LOGGER.warning("Source change completed for channel %d", self._channel)
         except Exception as err:
             _LOGGER.error(
                 "Failed to set source for channel %d: %s", self._channel, err
