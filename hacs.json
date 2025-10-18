@@ -1,0 +1,7 @@
+{
+  "name": "Powersoft Mezzo",
+  "content_in_root": false,
+  "render_readme": true,
+  "domains": ["powersoft_mezzo"],
+  "homeassistant": "2024.1.0"
+}
