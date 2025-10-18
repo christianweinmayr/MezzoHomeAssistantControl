@@ -287,6 +287,45 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
             raise
 
+    async def handle_disable_manual_source_mode(call):
+        """Handle disable_manual_source_mode service call (emergency fix)."""
+        _LOGGER.warning("Service call: disable_manual_source_mode - Attempting to restore automatic source routing...")
+
+        # Get the first available entry
+        entry_id = next(iter(hass.data[DOMAIN].keys()))
+        data = hass.data[DOMAIN][entry_id]
+        client: MezzoClient = data[CLIENT]
+
+        try:
+            # Disable manual source mode
+            await client.disable_manual_source_mode()
+
+            # Create success notification
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Manual Source Mode Disabled",
+                    "message": "Successfully disabled manual source mode. Automatic source routing should now be restored. If channel 1 is still silent, please power cycle the amplifier.",
+                    "notification_id": f"{DOMAIN}_disable_manual_source_mode",
+                },
+            )
+
+            _LOGGER.warning("Manual source mode disabled successfully.")
+
+        except Exception as err:
+            _LOGGER.error("Failed to disable manual source mode: %s", err)
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Manual Source Mode Disable Failed",
+                    "message": f"Error disabling manual source mode: {err}",
+                    "notification_id": f"{DOMAIN}_disable_manual_source_mode_error",
+                },
+            )
+            raise
+
     # Register services
     hass.services.async_register(
         DOMAIN,
@@ -329,6 +368,13 @@ async def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         "capture_eq",
         handle_capture_eq,
+        schema=vol.Schema({}),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "disable_manual_source_mode",
+        handle_disable_manual_source_mode,
         schema=vol.Schema({}),
     )
 

@@ -324,6 +324,30 @@ class MezzoClient:
         )
         return
 
+    async def disable_manual_source_mode(self) -> None:
+        """
+        Disable manual source selection mode.
+
+        This should restore automatic source routing.
+        Writing 0 to ADDR_MANUAL_SOURCE_SELECTION disables manual mode.
+
+        Raises:
+            ConnectionError: If not connected
+            TimeoutError: If request times out
+        """
+        from .mezzo_memory_map import ADDR_MANUAL_SOURCE_SELECTION
+
+        cmd = WriteCommand(ADDR_MANUAL_SOURCE_SELECTION, int32_to_bytes(0))
+
+        _LOGGER.warning("Disabling manual source selection mode (writing 0 to 0x%08x)",
+                       ADDR_MANUAL_SOURCE_SELECTION)
+        responses = await self._udp.send_request([cmd])
+
+        if responses[0].is_nak():
+            raise ValueError("Failed to disable manual source mode")
+
+        _LOGGER.warning("Manual source mode disabled successfully")
+
     async def get_source(self, channel: int) -> int:
         """
         Get current input source for channel.

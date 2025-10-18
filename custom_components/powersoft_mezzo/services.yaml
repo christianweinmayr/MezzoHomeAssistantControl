@@ -65,3 +65,7 @@ rename_scene:
 capture_eq:
   name: Capture EQ Settings
   description: Read and log current EQ settings from amplifier (for debugging)
+
+disable_manual_source_mode:
+  name: Disable Manual Source Mode
+  description: Emergency fix to restore automatic source routing. Use this if channel 1 is silent after changing sources. This writes 0 to the manual source selection register to disable manual override mode.
