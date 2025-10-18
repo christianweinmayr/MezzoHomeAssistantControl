@@ -326,6 +326,67 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
             raise
 
+    async def handle_read_source_registers(call):
+        """Handle read_source_registers service call (diagnostic)."""
+        _LOGGER.warning("Service call: read_source_registers - Reading all source registers...")
+
+        # Get the first available entry
+        entry_id = next(iter(hass.data[DOMAIN].keys()))
+        data = hass.data[DOMAIN][entry_id]
+        client: MezzoClient = data[CLIENT]
+
+        try:
+            # Read all source registers
+            registers = await client.read_all_source_registers()
+
+            # Build formatted output
+            output_lines = ["Source Register Diagnostics:"]
+            output_lines.append("=" * 60)
+
+            output_lines.append("\nSource ID Status (read-only, shows current active source):")
+            for ch in range(1, 5):
+                val = registers["source_id_status"].get(ch, "ERROR")
+                output_lines.append(f"  Channel {ch}: {val}")
+
+            output_lines.append("\nPriority Source (writable, sets preferred source):")
+            for ch in range(1, 5):
+                val = registers["priority_source"].get(ch, "ERROR")
+                output_lines.append(f"  Channel {ch}: {val}")
+
+            output_lines.append(f"\nManual Source Selection (global): {registers['manual_source_selection']}")
+            output_lines.append("  (0 = automatic routing, other = manual override)")
+
+            output_text = "\n".join(output_lines)
+
+            # Log to Home Assistant logs
+            _LOGGER.warning("Source Register Diagnostics:\n%s", output_text)
+
+            # Create persistent notification visible in UI
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Source Register Diagnostics",
+                    "message": f"```\n{output_text}\n```",
+                    "notification_id": f"{DOMAIN}_source_registers",
+                },
+            )
+
+            _LOGGER.warning("Source register read complete. Check notifications for results.")
+
+        except Exception as err:
+            _LOGGER.error("Failed to read source registers: %s", err)
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Source Register Read Failed",
+                    "message": f"Error reading source registers: {err}",
+                    "notification_id": f"{DOMAIN}_source_registers_error",
+                },
+            )
+            raise
+
     # Register services
     hass.services.async_register(
         DOMAIN,
@@ -375,6 +436,13 @@ async def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         "disable_manual_source_mode",
         handle_disable_manual_source_mode,
+        schema=vol.Schema({}),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "read_source_registers",
+        handle_read_source_registers,
         schema=vol.Schema({}),
     )
 

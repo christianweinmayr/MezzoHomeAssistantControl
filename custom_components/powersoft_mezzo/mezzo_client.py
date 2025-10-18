@@ -361,6 +361,61 @@ class MezzoClient:
 
         _LOGGER.warning("Manual source mode disabled successfully")
 
+    async def read_all_source_registers(self) -> dict:
+        """
+        Read all source-related registers for diagnostics.
+
+        Returns:
+            Dictionary with source register values for all channels
+        """
+        from .mezzo_memory_map import (
+            get_source_id_address,
+            get_priority_source_address,
+            ADDR_MANUAL_SOURCE_SELECTION,
+        )
+
+        # Build list of read commands
+        commands = []
+
+        # Read source ID (status) for each channel
+        for ch in range(1, NUM_CHANNELS + 1):
+            commands.append(ReadCommand(get_source_id_address(ch), 4))
+
+        # Read priority source for each channel
+        for ch in range(1, NUM_CHANNELS + 1):
+            commands.append(ReadCommand(get_priority_source_address(ch), 4))
+
+        # Read global manual source selection
+        commands.append(ReadCommand(ADDR_MANUAL_SOURCE_SELECTION, 4))
+
+        # Send all read commands
+        responses = await self._udp.send_request(commands)
+
+        # Parse results
+        result = {
+            "source_id_status": {},
+            "priority_source": {},
+            "manual_source_selection": None,
+        }
+
+        # Parse source ID status (first 4 responses)
+        for ch in range(1, NUM_CHANNELS + 1):
+            idx = ch - 1
+            if not responses[idx].is_nak():
+                result["source_id_status"][ch] = bytes_to_int32(responses[idx].data)
+
+        # Parse priority source (next 4 responses)
+        for ch in range(1, NUM_CHANNELS + 1):
+            idx = NUM_CHANNELS + (ch - 1)
+            if not responses[idx].is_nak():
+                result["priority_source"][ch] = bytes_to_int32(responses[idx].data)
+
+        # Parse global manual source selection (last response)
+        if not responses[-1].is_nak():
+            result["manual_source_selection"] = bytes_to_int32(responses[-1].data)
+
+        return result
+
     async def get_source(self, channel: int) -> int:
         """
         Get current input source for channel.
