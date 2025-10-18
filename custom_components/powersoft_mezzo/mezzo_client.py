@@ -38,6 +38,7 @@ from .mezzo_memory_map import (
     MUTE_OFF,
     # Source
     get_source_id_address,
+    get_priority_source_address,
     SOURCE_MIN,
     SOURCE_MAX,
     SOURCE_MUTED,
@@ -314,11 +315,12 @@ class MezzoClient:
         if not SOURCE_MIN <= source_id <= SOURCE_MAX:
             raise ValueError(f"Source ID must be {SOURCE_MIN}-{SOURCE_MAX}")
 
-        addr = get_source_id_address(channel)
-        # Source ID is stored as 4 int8 values, we write to the first one
+        # Write to priority source address, not source_id (which is read-only status)
+        addr = get_priority_source_address(channel)
         cmd = WriteCommand(addr, int32_to_bytes(source_id))
 
-        _LOGGER.debug("Setting channel %d source to %d", channel, source_id)
+        _LOGGER.debug("Setting channel %d priority source to %d (addr=0x%08x)",
+                     channel, source_id, addr)
         responses = await self._udp.send_request([cmd])
 
         if responses[0].is_nak():

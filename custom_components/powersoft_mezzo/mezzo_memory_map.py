@@ -475,6 +475,13 @@ def get_source_id_address(channel: int) -> int:
     return ADDR_SOURCE_ID_CH1 + ((channel - 1) * 4)
 
 
+def get_priority_source_address(channel: int) -> int:
+    """Get priority source address for given channel (1-4)."""
+    if not 1 <= channel <= NUM_CHANNELS:
+        raise ValueError(f"Channel must be 1-{NUM_CHANNELS}")
+    return ADDR_PRIORITY_SOURCE_CH1 + ((channel - 1) * 4)
+
+
 def get_zone_gain_address(channel: int) -> int:
     """Get zone gain address for given channel (1-4)."""
     if not 1 <= channel <= NUM_CHANNELS:
