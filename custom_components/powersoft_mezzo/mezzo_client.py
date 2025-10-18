@@ -315,14 +315,33 @@ class MezzoClient:
         if not SOURCE_MIN <= source_id <= SOURCE_MAX:
             raise ValueError(f"Source ID must be {SOURCE_MIN}-{SOURCE_MAX}")
 
-        # DISABLED: Source selection not working correctly
-        # Writing to these addresses breaks channel 1 audio
-        # User should use Armonía Plus for source selection until we understand the protocol
-        _LOGGER.warning(
-            "Source selection disabled - use Armonía Plus. Channel %d source change to %d ignored.",
-            channel, source_id
+        from .mezzo_memory_map import (
+            get_priority_source_address,
+            ADDR_MANUAL_SOURCE_SELECTION,
         )
-        return
+
+        # Get the priority source address for this channel
+        priority_addr = get_priority_source_address(channel)
+
+        _LOGGER.warning(
+            "Setting channel %d source to %d - writing to priority 0x%08x and manual 0x%08x",
+            channel, source_id, priority_addr, ADDR_MANUAL_SOURCE_SELECTION
+        )
+
+        # Write to both the per-channel priority source AND the global manual selection
+        commands = [
+            WriteCommand(priority_addr, int32_to_bytes(source_id)),
+            WriteCommand(ADDR_MANUAL_SOURCE_SELECTION, int32_to_bytes(source_id)),
+        ]
+
+        responses = await self._udp.send_request(commands)
+
+        # Check both responses
+        for i, response in enumerate(responses):
+            if response.is_nak():
+                raise ValueError(f"Failed to set source (command {i+1} failed)")
+
+        _LOGGER.warning("Source set complete for channel %d", channel)
 
     async def disable_manual_source_mode(self) -> None:
         """
