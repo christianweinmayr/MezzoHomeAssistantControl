@@ -148,7 +148,7 @@ class MezzoClient:
     # Volume/Gain Control
     # ========================================================================
 
-    async def set_volume(self, channel: int, volume: float, use_user_gain: bool = True) -> None:
+    async def set_volume(self, channel: int, volume: float, use_user_gain: bool = False) -> None:
         """
         Set channel volume/gain.
 
@@ -156,6 +156,7 @@ class MezzoClient:
             channel: Channel number (1-4)
             volume: Volume level 0.0-1.0 (linear gain)
             use_user_gain: Use user gain area (True) or zone gain area (False)
+                          Default False - zone gain is the writable register
 
         Raises:
             ValueError: If channel or volume out of range
@@ -167,10 +168,13 @@ class MezzoClient:
         if not 0.0 <= volume <= 1.0:
             raise ValueError("Volume must be between 0.0 and 1.0")
 
-        addr = get_user_gain_address(channel) if use_user_gain else get_zone_gain_address(channel)
+        # IMPORTANT: User gain appears to be read-only
+        # Use zone gain (0x0000f008+) for writes, user gain (0x00004000+) for reads
+        addr = get_zone_gain_address(channel)
         cmd = WriteCommand(addr, float_to_bytes(volume))
 
-        _LOGGER.debug("Setting channel %d volume to %.2f", channel, volume)
+        _LOGGER.warning("Setting channel %d volume to %.2f (writing to zone gain 0x%08x)",
+                       channel, volume, addr)
         responses = await self._udp.send_request([cmd])
 
         if responses[0].is_nak():
