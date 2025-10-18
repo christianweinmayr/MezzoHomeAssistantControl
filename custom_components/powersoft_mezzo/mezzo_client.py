@@ -315,13 +315,18 @@ class MezzoClient:
         if not SOURCE_MIN <= source_id <= SOURCE_MAX:
             raise ValueError(f"Source ID must be {SOURCE_MIN}-{SOURCE_MAX}")
 
-        # Write only to per-channel priority source address
+        # Try different approaches for different channels
+        # Based on testing: global address 0x00002224 seems to work for channel 2
+        from .mezzo_memory_map import ADDR_MANUAL_SOURCE_SELECTION
+
         addr_priority = get_priority_source_address(channel)
-        cmd = WriteCommand(addr_priority, int32_to_bytes(source_id))
+
+        # Try writing to ONLY the global address
+        cmd = WriteCommand(ADDR_MANUAL_SOURCE_SELECTION, int32_to_bytes(source_id))
 
         _LOGGER.warning(
-            "Setting channel %d source to %d - writing to 0x%08x",
-            channel, source_id, addr_priority
+            "Setting channel %d source to %d - writing to GLOBAL 0x%08x",
+            channel, source_id, ADDR_MANUAL_SOURCE_SELECTION
         )
         responses = await self._udp.send_request([cmd])
 
