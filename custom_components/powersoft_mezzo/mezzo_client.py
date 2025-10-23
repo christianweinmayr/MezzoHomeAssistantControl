@@ -147,6 +147,10 @@ class MezzoClient:
     # ========================================================================
     # Volume/Gain Control
     # ========================================================================
+    # TODO: Investigate zone_gain vs user_gain behavior in future
+    # Currently using user_gain (0x00004000+) for all volume operations
+    # Zone_gain (0x0000f008+) exists but relationship between the two is unclear
+    # May need to understand how zone system affects volume routing
 
     async def set_volume(self, channel: int, volume: float, use_user_gain: bool = False) -> None:
         """
