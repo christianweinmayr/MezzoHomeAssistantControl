@@ -999,12 +999,33 @@ class MezzoClient:
             value = MUTE_ON if muted else MUTE_OFF
             commands.append(WriteCommand(addr, uint8_to_bytes(value)))
 
-            # Source
-            source = scene_config['sources'][ch - 1]
-            if not SOURCE_MIN <= source <= SOURCE_MAX:
-                raise ValueError(f"Source ID for channel {ch} must be {SOURCE_MIN}-{SOURCE_MAX}")
-            addr = get_source_id_address(ch)
-            commands.append(WriteCommand(addr, int32_to_bytes(source)))
+        # Source selection - use byte-packed Manual Source Selection register
+        # Channels 1 & 2 are stored in bytes 0 & 1 of a single 32-bit register
+        # Read current value first
+        read_cmd = ReadCommand(ADDR_MANUAL_SOURCE_SELECTION, 4)
+        read_responses = await self._udp.send_request([read_cmd])
+
+        if read_responses[0].is_nak():
+            _LOGGER.warning("Could not read current source selection, using 0x00000000")
+            current_source_value = 0
+        else:
+            current_source_value = bytes_to_int32(read_responses[0].data)
+
+        # Build new packed value with sources for channels 1 & 2
+        # Mezzo 602 AD only has 2 output channels, ignore channels 3 & 4 from scene
+        ch1_source = scene_config['sources'][0]
+        ch2_source = scene_config['sources'][1]
+
+        # Valid source IDs: 1,3,5,7,9,11,13,15 (odd numbers)
+        valid_source_ids = {1, 3, 5, 7, 9, 11, 13, 15}
+        if ch1_source not in valid_source_ids:
+            raise ValueError(f"Channel 1 source ID must be one of {valid_source_ids}")
+        if ch2_source not in valid_source_ids:
+            raise ValueError(f"Channel 2 source ID must be one of {valid_source_ids}")
+
+        # Pack both channels into one value: ch1 in byte 0, ch2 in byte 1
+        new_source_value = (current_source_value & 0xFFFF0000) | ch1_source | (ch2_source << 8)
+        commands.append(WriteCommand(ADDR_MANUAL_SOURCE_SELECTION, int32_to_bytes(new_source_value)))
 
         # Source EQ settings (optional) - write to all enabled zone channels
         if 'source_eq' in scene_config:
