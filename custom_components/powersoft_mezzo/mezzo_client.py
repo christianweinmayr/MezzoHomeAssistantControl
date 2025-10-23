@@ -30,7 +30,6 @@ from .mezzo_memory_map import (
     STANDBY_DEACTIVATE,
     # Volume/Gain
     get_user_gain_address,
-    get_zone_gain_address,
     # Mute
     get_user_mute_address,
     get_zone_mute_address,
@@ -169,12 +168,11 @@ class MezzoClient:
         if not 0.0 <= volume <= 1.0:
             raise ValueError("Volume must be between 0.0 and 1.0")
 
-        # IMPORTANT: User gain appears to be read-only
-        # Use zone gain (0x0000f008+) for writes, user gain (0x00004000+) for reads
-        addr = get_zone_gain_address(channel)
+        # Write to user gain (0x00004000+)
+        addr = get_user_gain_address(channel)
         cmd = WriteCommand(addr, float_to_bytes(volume))
 
-        _LOGGER.warning("Setting channel %d volume to %.2f (writing to zone gain 0x%08x)",
+        _LOGGER.warning("Setting channel %d volume to %.2f (writing to user gain 0x%08x)",
                        channel, volume, addr)
         responses = await self._udp.send_request([cmd])
 
@@ -201,9 +199,8 @@ class MezzoClient:
         if not 1 <= channel <= NUM_CHANNELS:
             raise ValueError(f"Channel must be 1-{NUM_CHANNELS}")
 
-        # IMPORTANT: Read from zone_gain (same register we write to)
-        # User_gain appears to be a display/status register that may not reflect writes
-        addr = get_zone_gain_address(channel)
+        # Read from user gain (0x00004000+)
+        addr = get_user_gain_address(channel)
         cmd = ReadCommand(addr, 4)
         responses = await self._udp.send_request([cmd])
 
@@ -986,11 +983,11 @@ class MezzoClient:
 
         # Build write commands for all channels
         for ch in range(1, NUM_CHANNELS + 1):
-            # Volume - use zone_gain (writable register), not user_gain (read-only)
+            # Volume - write to user_gain
             volume = scene_config['volumes'][ch - 1]
             if not 0.0 <= volume <= 1.0:
                 raise ValueError(f"Volume for channel {ch} must be between 0.0 and 1.0")
-            addr = get_zone_gain_address(ch)
+            addr = get_user_gain_address(ch)
             commands.append(WriteCommand(addr, float_to_bytes(volume)))
 
             # Mute
@@ -1288,11 +1285,11 @@ class MezzoClient:
         commands = [
             # Power
             ReadCommand(ADDR_STANDBY_STATE, 4),
-            # Volumes (all channels) - read from zone_gain (writable register)
-            ReadCommand(get_zone_gain_address(1), 4),
-            ReadCommand(get_zone_gain_address(2), 4),
-            ReadCommand(get_zone_gain_address(3), 4),
-            ReadCommand(get_zone_gain_address(4), 4),
+            # Volumes (all channels) - read from user_gain
+            ReadCommand(get_user_gain_address(1), 4),
+            ReadCommand(get_user_gain_address(2), 4),
+            ReadCommand(get_user_gain_address(3), 4),
+            ReadCommand(get_user_gain_address(4), 4),
             # Mutes (all channels)
             ReadCommand(get_user_mute_address(1), 1),
             ReadCommand(get_user_mute_address(2), 1),
