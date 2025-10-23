@@ -709,6 +709,180 @@ class MezzoClient:
 
         return eq_config
 
+    # ========================================================================
+    # Source EQ (Active Input EQ)
+    # ========================================================================
+
+    async def get_source_eq_band(self, band: int) -> Dict[str, Any]:
+        """
+        Read active Source EQ band configuration from amplifier.
+
+        The Source EQ applies to the currently selected input source.
+        When you switch inputs, different Source EQ settings become active.
+
+        Args:
+            band: Band number (1-4)
+
+        Returns:
+            Dictionary with EQ band configuration:
+            - enabled: 1 if enabled, 0 if disabled
+            - type: Filter type (0=peaking, 11=low shelf, etc.)
+            - q: Quality factor
+            - slope: Filter slope
+            - frequency: Center frequency in Hz
+            - gain: Linear gain
+
+        Raises:
+            ValueError: If band out of range
+            ConnectionError: If not connected
+            TimeoutError: If request times out
+        """
+        from .mezzo_memory_map import (
+            get_source_eq_biquad_address,
+            EQ_BIQUAD_SIZE,
+            NUM_SOURCE_EQ_BANDS,
+        )
+
+        if not 1 <= band <= NUM_SOURCE_EQ_BANDS:
+            raise ValueError(f"Band must be 1-{NUM_SOURCE_EQ_BANDS}")
+
+        addr = get_source_eq_biquad_address(band)
+        cmd = ReadCommand(addr, EQ_BIQUAD_SIZE)
+        responses = await self._udp.send_request([cmd])
+
+        if responses[0].is_nak():
+            raise ValueError(f"Failed to read Source EQ band {band}")
+
+        # Parse BiQuad structure
+        data = responses[0].data
+        enabled, filt_type, q, slope, frequency, gain = struct.unpack('<IIffIf', data)
+
+        return {
+            "enabled": enabled,
+            "type": filt_type,
+            "q": q,
+            "slope": slope,
+            "frequency": frequency,
+            "gain": gain,
+        }
+
+    async def set_source_eq_band(
+        self,
+        band: int,
+        enabled: int,
+        filt_type: int,
+        q: float,
+        slope: float,
+        frequency: int,
+        gain: float
+    ) -> None:
+        """
+        Write active Source EQ band configuration to amplifier.
+
+        Changes the Source EQ for whichever input is currently active.
+
+        Args:
+            band: Band number (1-4)
+            enabled: 1 if enabled, 0 if disabled
+            filt_type: Filter type (0=peaking, 11=low shelf, etc.)
+            q: Quality factor
+            slope: Filter slope
+            frequency: Center frequency in Hz
+            gain: Linear gain value
+
+        Raises:
+            ValueError: If band out of range
+            ConnectionError: If not connected
+            TimeoutError: If request times out
+        """
+        from .mezzo_memory_map import (
+            get_source_eq_biquad_address,
+            NUM_SOURCE_EQ_BANDS,
+        )
+
+        if not 1 <= band <= NUM_SOURCE_EQ_BANDS:
+            raise ValueError(f"Band must be 1-{NUM_SOURCE_EQ_BANDS}")
+
+        # Pack BiQuad structure (24 bytes)
+        biquad_data = struct.pack(
+            '<IIffIf',  # Little-endian
+            enabled,
+            filt_type,
+            q,
+            slope,
+            frequency,
+            gain,
+        )
+
+        addr = get_source_eq_biquad_address(band)
+        cmd = WriteCommand(addr, biquad_data)
+
+        _LOGGER.debug("Setting Source EQ Band%d: enabled=%d, type=%d, freq=%dHz, gain=%.2f",
+                     band, enabled, filt_type, frequency, gain)
+
+        responses = await self._udp.send_request([cmd])
+
+        if responses[0].is_nak():
+            raise ValueError(f"Failed to set Source EQ band {band}")
+
+        _LOGGER.info("Source EQ Band %d updated successfully", band)
+
+    async def get_all_source_eq(self) -> List[Dict[str, Any]]:
+        """
+        Read all active Source EQ band configurations.
+
+        Returns:
+            List of 4 bands with EQ config for currently active input source
+
+        Raises:
+            ConnectionError: If not connected
+            TimeoutError: If request times out
+        """
+        from .mezzo_memory_map import (
+            get_source_eq_biquad_address,
+            EQ_BIQUAD_SIZE,
+            NUM_SOURCE_EQ_BANDS,
+        )
+
+        # Build multicommand to read all Source EQ bands at once
+        commands = []
+        for band in range(1, NUM_SOURCE_EQ_BANDS + 1):
+            addr = get_source_eq_biquad_address(band)
+            commands.append(ReadCommand(addr, EQ_BIQUAD_SIZE))
+
+        _LOGGER.debug("Reading all Source EQ settings (4 bands)...")
+        responses = await self._udp.send_request(commands)
+
+        # Parse responses
+        eq_config = []
+        for idx, resp in enumerate(responses):
+            band = idx + 1
+            if resp.is_nak():
+                _LOGGER.warning("Failed to read Source EQ Band%d", band)
+                # Use default flat EQ
+                eq_config.append({
+                    "enabled": 0,
+                    "type": 0,
+                    "q": 1.0,
+                    "slope": 1.0,
+                    "frequency": 1000,
+                    "gain": 1.0,
+                })
+            else:
+                # Parse BiQuad structure
+                data = resp.data
+                enabled, filt_type, q, slope, frequency, gain = struct.unpack('<IIffIf', data)
+                eq_config.append({
+                    "enabled": enabled,
+                    "type": filt_type,
+                    "q": q,
+                    "slope": slope,
+                    "frequency": frequency,
+                    "gain": gain,
+                })
+
+        return eq_config
+
     async def capture_current_state(self) -> Dict[str, Any]:
         """
         Capture complete current amplifier state for scene creation.
@@ -1073,11 +1247,17 @@ class MezzoClient:
             ReadCommand(ADDR_FAULT_CODE, 1),
         ]
 
-        # Add EQ band read commands (4 channels × 4 bands)
+        # Add User EQ band read commands (4 channels × 4 bands)
         for ch in range(1, NUM_CHANNELS + 1):
             for band in range(1, NUM_EQ_BANDS + 1):
                 addr = get_user_eq_biquad_address(ch, band)
                 commands.append(ReadCommand(addr, EQ_BIQUAD_SIZE))
+
+        # Add Source EQ band read commands (4 bands for active input)
+        from .mezzo_memory_map import get_source_eq_biquad_address, NUM_SOURCE_EQ_BANDS
+        for band in range(1, NUM_SOURCE_EQ_BANDS + 1):
+            addr = get_source_eq_biquad_address(band)
+            commands.append(ReadCommand(addr, EQ_BIQUAD_SIZE))
 
         responses = await self._udp.send_request(commands)
 
@@ -1088,7 +1268,8 @@ class MezzoClient:
             'sources': {},
             'temperatures': {},
             'fault_code': None,
-            'eq': {},  # Store EQ by channel/band: eq[channel][band]
+            'eq': {},  # Store User EQ by channel/band: eq[channel][band]
+            'source_eq': {},  # Store Source EQ by band: source_eq[band]
         }
 
         # Parse volumes
@@ -1158,6 +1339,36 @@ class MezzoClient:
                         "frequency": 1000,
                         "gain": 1.0,
                     }
+
+        # Parse Source EQ bands (starting after User EQ responses)
+        # resp_idx now points to first Source EQ band
+        from .mezzo_memory_map import NUM_SOURCE_EQ_BANDS
+        for band in range(1, NUM_SOURCE_EQ_BANDS + 1):
+            resp = responses[resp_idx]
+            resp_idx += 1
+
+            if not resp.is_nak():
+                # Parse BiQuad structure
+                data = resp.data
+                enabled, filt_type, q, slope, frequency, gain = struct.unpack('<IIffIf', data)
+                state['source_eq'][band] = {
+                    "enabled": enabled,
+                    "type": filt_type,
+                    "q": q,
+                    "slope": slope,
+                    "frequency": frequency,
+                    "gain": gain,
+                }
+            else:
+                # Use default if read failed
+                state['source_eq'][band] = {
+                    "enabled": 0,
+                    "type": 0,
+                    "q": 1.0,
+                    "slope": 1.0,
+                    "frequency": 1000,
+                    "gain": 1.0,
+                }
 
         return state
 

@@ -343,9 +343,20 @@ ADDR_ZONE_GUID_CH2 = 0x0000f02c  # uint32 4 bytes (R/W)
 ADDR_ZONE_GUID_CH3 = 0x0000f030  # uint32 4 bytes (R/W)
 ADDR_ZONE_GUID_CH4 = 0x0000f034  # uint32 4 bytes (R/W)
 
-# Zone EQ
-ADDR_ZONE_EQ_START = 0x0000f100
-ADDR_ZONE_EQ_END = 0x0000f340
+# Active Source EQ (applies to currently selected input source)
+# This area contains the Source EQ settings for whichever input is currently active
+# Structure: 4 BiQuad filters (24 bytes each = 96 bytes), same format as User EQ
+ADDR_SOURCE_EQ_START = 0x0000f100
+ADDR_SOURCE_EQ_END = 0x0000f340
+
+# Active Source EQ BiQuads (typically organized as 2-band stereo pairs)
+ADDR_SOURCE_EQ_BIQUAD1 = 0x0000f100  # Band 1: 24 bytes
+ADDR_SOURCE_EQ_BIQUAD2 = 0x0000f118  # Band 2: 24 bytes
+ADDR_SOURCE_EQ_BIQUAD3 = 0x0000f130  # Band 3: 24 bytes
+ADDR_SOURCE_EQ_BIQUAD4 = 0x0000f148  # Band 4: 24 bytes
+
+# Number of Source EQ bands (exposed to user)
+NUM_SOURCE_EQ_BANDS = 4
 
 
 # ============================================================================
@@ -535,3 +546,22 @@ def get_user_eq_biquad_address(channel: int, band: int) -> int:
 
     channel_start = get_user_eq_channel_start(channel)
     return channel_start + ((band - 1) * EQ_BIQUAD_SIZE)
+
+
+def get_source_eq_biquad_address(band: int) -> int:
+    """
+    Get active Source EQ BiQuad address for given band (1-4).
+
+    Note: Source EQ applies to the currently active input source,
+    not per output channel.
+
+    Args:
+        band: EQ band number (1-4)
+
+    Returns:
+        Memory address of the BiQuad structure
+    """
+    if not 1 <= band <= NUM_SOURCE_EQ_BANDS:
+        raise ValueError(f"Band must be 1-{NUM_SOURCE_EQ_BANDS}")
+
+    return ADDR_SOURCE_EQ_START + ((band - 1) * EQ_BIQUAD_SIZE)
