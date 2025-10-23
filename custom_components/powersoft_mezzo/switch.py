@@ -18,7 +18,7 @@ from .const import (
     CHANNEL_NUMBERS,
 )
 from .mezzo_client import MezzoClient
-from .mezzo_memory_map import NUM_EQ_BANDS
+from .mezzo_memory_map import NUM_EQ_BANDS, NUM_SOURCE_EQ_BANDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,13 +41,17 @@ async def async_setup_entry(
     for channel in CHANNEL_NUMBERS:
         entities.append(MezzoMuteSwitch(coordinator, client, entry, channel))
 
-    # Add EQ band enable switches for each channel and band
+    # Add User EQ band enable switches for each channel and band
     for channel in CHANNEL_NUMBERS:
         for band in range(1, NUM_EQ_BANDS + 1):
             entities.append(MezzoEQBandSwitch(coordinator, client, entry, channel, band))
 
+    # Add Source EQ band enable switches for each band
+    for band in range(1, NUM_SOURCE_EQ_BANDS + 1):
+        entities.append(MezzoSourceEQBandSwitch(coordinator, client, entry, band))
+
     async_add_entities(entities)
-    _LOGGER.info("Added %d switch entities (power, mutes, EQ bands)", len(entities))
+    _LOGGER.info("Added %d switch entities (power, mutes, User EQ, Source EQ)", len(entities))
 
 
 class MezzoPowerSwitch(CoordinatorEntity, SwitchEntity):
@@ -229,4 +233,83 @@ class MezzoEQBandSwitch(CoordinatorEntity, SwitchEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to disable EQ CH%d Band%d: %s", self._channel, self._band, err)
+            raise
+
+
+class MezzoSourceEQBandSwitch(CoordinatorEntity, SwitchEntity):
+    """Representation of a Source EQ band enable/disable switch."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:equalizer"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self,
+        coordinator,
+        client: MezzoClient,
+        entry: ConfigEntry,
+        band: int,
+    ):
+        """Initialize the Source EQ band switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._band = band
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Powersoft",
+            "model": "Mezzo 602 AD",
+        }
+        self._attr_unique_id = f"{entry.entry_id}_source_eq_band{band}_enable"
+        self._attr_name = f"Source EQ Band {band} Enable"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the Source EQ band is enabled."""
+        if (self.coordinator.data and
+            'source_eq' in self.coordinator.data and
+            self._band in self.coordinator.data['source_eq']):
+            return bool(self.coordinator.data['source_eq'][self._band].get("enabled", 0))
+        return None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable the Source EQ band."""
+        try:
+            # Read current settings
+            current = await self._client.get_source_eq_band(self._band)
+
+            # Write back with enabled=1
+            await self._client.set_source_eq_band(
+                self._band,
+                enabled=1,
+                filt_type=current["type"],
+                q=current["q"],
+                slope=current["slope"],
+                frequency=current["frequency"],
+                gain=current["gain"],
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to enable Source EQ Band%d: %s", self._band, err)
+            raise
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable the Source EQ band."""
+        try:
+            # Read current settings
+            current = await self._client.get_source_eq_band(self._band)
+
+            # Write back with enabled=0
+            await self._client.set_source_eq_band(
+                self._band,
+                enabled=0,
+                filt_type=current["type"],
+                q=current["q"],
+                slope=current["slope"],
+                frequency=current["frequency"],
+                gain=current["gain"],
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to disable Source EQ Band%d: %s", self._band, err)
             raise

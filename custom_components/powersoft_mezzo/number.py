@@ -17,7 +17,7 @@ from .const import (
     CHANNEL_NUMBERS,
 )
 from .mezzo_client import MezzoClient
-from .mezzo_memory_map import NUM_EQ_BANDS
+from .mezzo_memory_map import NUM_EQ_BANDS, NUM_SOURCE_EQ_BANDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,15 +37,21 @@ async def async_setup_entry(
     for channel in CHANNEL_NUMBERS:
         entities.append(MezzoVolumeNumber(coordinator, client, entry, channel))
 
-    # Add EQ parameter controls for each channel and band
+    # Add User EQ parameter controls for each channel and band
     for channel in CHANNEL_NUMBERS:
         for band in range(1, NUM_EQ_BANDS + 1):
             entities.append(MezzoEQFrequencyNumber(coordinator, client, entry, channel, band))
             entities.append(MezzoEQGainNumber(coordinator, client, entry, channel, band))
             entities.append(MezzoEQQNumber(coordinator, client, entry, channel, band))
 
+    # Add Source EQ parameter controls for each band (applies to active input)
+    for band in range(1, NUM_SOURCE_EQ_BANDS + 1):
+        entities.append(MezzoSourceEQFrequencyNumber(coordinator, client, entry, band))
+        entities.append(MezzoSourceEQGainNumber(coordinator, client, entry, band))
+        entities.append(MezzoSourceEQQNumber(coordinator, client, entry, band))
+
     async_add_entities(entities)
-    _LOGGER.info("Added %d number entities (volumes, EQ frequency/gain/Q)", len(entities))
+    _LOGGER.info("Added %d number entities (volumes, User EQ, Source EQ)", len(entities))
 
 
 class MezzoVolumeNumber(CoordinatorEntity, NumberEntity):
@@ -313,5 +319,204 @@ class MezzoEQQNumber(CoordinatorEntity, NumberEntity):
             _LOGGER.error(
                 "Failed to set EQ Q for CH%d Band%d: %s",
                 self._channel, self._band, err
+            )
+            raise
+
+# ========================================================================
+# Source EQ Number Entities (Active Input EQ)
+# ========================================================================
+
+class MezzoSourceEQFrequencyNumber(CoordinatorEntity, NumberEntity):
+    """Representation of a Source EQ band frequency control."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:sine-wave"
+    _attr_native_min_value = 20.0
+    _attr_native_max_value = 20000.0
+    _attr_native_step = 1.0
+    _attr_native_unit_of_measurement = "Hz"
+    _attr_mode = NumberMode.BOX
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self,
+        coordinator,
+        client: MezzoClient,
+        entry: ConfigEntry,
+        band: int,
+    ):
+        """Initialize the Source EQ frequency number entity."""
+        super().__init__(coordinator)
+        self._client = client
+        self._band = band
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Powersoft",
+            "model": "Mezzo 602 AD",
+        }
+        self._attr_unique_id = f"{entry.entry_id}_source_eq_band{band}_frequency"
+        self._attr_name = f"Source EQ Band {band} Frequency"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the current frequency."""
+        if (self.coordinator.data and
+            'source_eq' in self.coordinator.data and
+            self._band in self.coordinator.data['source_eq']):
+            return float(self.coordinator.data['source_eq'][self._band].get("frequency", 1000))
+        return None
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the frequency."""
+        try:
+            # Read current settings
+            current = await self._client.get_source_eq_band(self._band)
+
+            # Write back with new frequency
+            await self._client.set_source_eq_band(
+                self._band,
+                enabled=current["enabled"],
+                filt_type=current["type"],
+                q=current["q"],
+                slope=current["slope"],
+                frequency=int(value),
+                gain=current["gain"],
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to set Source EQ frequency for Band%d: %s",
+                self._band, err
+            )
+            raise
+
+
+class MezzoSourceEQGainNumber(CoordinatorEntity, NumberEntity):
+    """Representation of a Source EQ band gain control."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:chart-bell-curve"
+    _attr_native_min_value = 0.1
+    _attr_native_max_value = 10.0
+    _attr_native_step = 0.01
+    _attr_mode = NumberMode.SLIDER
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self,
+        coordinator,
+        client: MezzoClient,
+        entry: ConfigEntry,
+        band: int,
+    ):
+        """Initialize the Source EQ gain number entity."""
+        super().__init__(coordinator)
+        self._client = client
+        self._band = band
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Powersoft",
+            "model": "Mezzo 602 AD",
+        }
+        self._attr_unique_id = f"{entry.entry_id}_source_eq_band{band}_gain"
+        self._attr_name = f"Source EQ Band {band} Gain"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the current gain (linear)."""
+        if (self.coordinator.data and
+            'source_eq' in self.coordinator.data and
+            self._band in self.coordinator.data['source_eq']):
+            return self.coordinator.data['source_eq'][self._band].get("gain", 1.0)
+        return None
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the gain."""
+        try:
+            # Read current settings
+            current = await self._client.get_source_eq_band(self._band)
+
+            # Write back with new gain
+            await self._client.set_source_eq_band(
+                self._band,
+                enabled=current["enabled"],
+                filt_type=current["type"],
+                q=current["q"],
+                slope=current["slope"],
+                frequency=current["frequency"],
+                gain=value,
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to set Source EQ gain for Band%d: %s",
+                self._band, err
+            )
+            raise
+
+
+class MezzoSourceEQQNumber(CoordinatorEntity, NumberEntity):
+    """Representation of a Source EQ band Q (quality factor) control."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:waves"
+    _attr_native_min_value = 0.1
+    _attr_native_max_value = 10.0
+    _attr_native_step = 0.1
+    _attr_mode = NumberMode.SLIDER
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self,
+        coordinator,
+        client: MezzoClient,
+        entry: ConfigEntry,
+        band: int,
+    ):
+        """Initialize the Source EQ Q number entity."""
+        super().__init__(coordinator)
+        self._client = client
+        self._band = band
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Powersoft",
+            "model": "Mezzo 602 AD",
+        }
+        self._attr_unique_id = f"{entry.entry_id}_source_eq_band{band}_q"
+        self._attr_name = f"Source EQ Band {band} Q"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the current Q factor."""
+        if (self.coordinator.data and
+            'source_eq' in self.coordinator.data and
+            self._band in self.coordinator.data['source_eq']):
+            return self.coordinator.data['source_eq'][self._band].get("q", 1.0)
+        return None
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the Q factor."""
+        try:
+            # Read current settings
+            current = await self._client.get_source_eq_band(self._band)
+
+            # Write back with new Q
+            await self._client.set_source_eq_band(
+                self._band,
+                enabled=current["enabled"],
+                filt_type=current["type"],
+                q=value,
+                slope=current["slope"],
+                frequency=current["frequency"],
+                gain=current["gain"],
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to set Source EQ Q for Band%d: %s",
+                self._band, err
             )
             raise
