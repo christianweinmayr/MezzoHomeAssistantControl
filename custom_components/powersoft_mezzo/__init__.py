@@ -489,13 +489,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
         client: MezzoClient = data[CLIENT]
 
         try:
-            from .pbus_protocol import ReadCommand
+            from .pbus_protocol import ReadCommand, bytes_to_uint8, bytes_to_float, bytes_to_uint32
             from .mezzo_memory_map import (
                 ADDR_ZONE_ENABLE_CH1, ADDR_ZONE_MUTE_CH1,
                 ADDR_ZONE_GAIN_CH1, ADDR_ZONE_SOURCE_GUID_CH1,
                 ADDR_ZONE_GUID_CH1
             )
-            from .mezzo_protocol_helpers import bytes_to_uint8, bytes_to_float, bytes_to_uint32
 
             # Read Zone control registers
             commands = [
