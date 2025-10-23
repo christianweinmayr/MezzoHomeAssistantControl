@@ -986,11 +986,11 @@ class MezzoClient:
 
         # Build write commands for all channels
         for ch in range(1, NUM_CHANNELS + 1):
-            # Volume
+            # Volume - use zone_gain (writable register), not user_gain (read-only)
             volume = scene_config['volumes'][ch - 1]
             if not 0.0 <= volume <= 1.0:
                 raise ValueError(f"Volume for channel {ch} must be between 0.0 and 1.0")
-            addr = get_user_gain_address(ch)
+            addr = get_zone_gain_address(ch)
             commands.append(WriteCommand(addr, float_to_bytes(volume)))
 
             # Mute
