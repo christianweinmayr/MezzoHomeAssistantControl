@@ -79,12 +79,15 @@ UID_EQ: Final = "eq_ch"
 NUM_CHANNELS: Final = 4
 CHANNEL_NUMBERS: Final = list(range(1, NUM_CHANNELS + 1))
 
-# Source options (-1 = muted, 0-31 = sources)
+# Source options (actual hardware source IDs → user-friendly names)
+# Pattern: Analog inputs (1,5,9,13) interleaved with Dante (3,7)
 SOURCE_OPTIONS: Final = {
     "1": "Input 1",
-    "2": "Input 2",
-    "3": "Input 3",
-    "4": "Input 4",
+    "3": "Dante 1",
+    "5": "Input 2",
+    "7": "Dante 2",
+    "9": "Input 3",
+    "13": "Input 4",
 }
 
 # Service names

@@ -314,8 +314,9 @@ class MezzoClient:
 
         Args:
             channel: Output channel number (1-2 for Mezzo 602 AD)
-            source_id: Input number (1-4 for Mezzo 602 AD inputs)
-                      Maps to actual source IDs: 1→1, 2→5, 3→9, 4→13
+            source_id: Hardware source ID. Valid values:
+                      1 = Input 1, 3 = Dante 1, 5 = Input 2, 7 = Dante 2,
+                      9 = Input 3, 13 = Input 4
 
         Raises:
             ValueError: If channel or source_id out of range
@@ -324,13 +325,11 @@ class MezzoClient:
         """
         if not 1 <= channel <= 2:  # Mezzo 602 AD has 2 output channels
             raise ValueError(f"Channel must be 1-2")
-        if not 1 <= source_id <= 4:  # Mezzo 602 AD has 4 inputs
-            raise ValueError(f"Source ID must be 1-4")
 
-        # Map input numbers to actual source IDs
-        # Input 1 → Source 1, Input 2 → Source 5, Input 3 → Source 9, Input 4 → Source 13
-        source_id_map = {1: 1, 2: 5, 3: 9, 4: 13}
-        actual_source_id = source_id_map[source_id]
+        # Valid source IDs for Mezzo 602 AD (4 analog inputs + 2 Dante inputs)
+        valid_source_ids = {1, 3, 5, 7, 9, 13}
+        if source_id not in valid_source_ids:
+            raise ValueError(f"Source ID must be one of {valid_source_ids}")
 
         # Read current packed value
         read_cmd = ReadCommand(ADDR_MANUAL_SOURCE_SELECTION, 4)
@@ -345,14 +344,14 @@ class MezzoClient:
         # Channel 1 = byte 0 (bits 0-7), Channel 2 = byte 1 (bits 8-15)
         if channel == 1:
             # Clear byte 0 and set new value
-            new_value = (current_value & 0xFFFFFF00) | actual_source_id
+            new_value = (current_value & 0xFFFFFF00) | source_id
         else:  # channel == 2
             # Clear byte 1 and set new value
-            new_value = (current_value & 0xFFFF00FF) | (actual_source_id << 8)
+            new_value = (current_value & 0xFFFF00FF) | (source_id << 8)
 
         _LOGGER.warning(
-            "Setting channel %d to input %d (source ID %d): 0x%08x → 0x%08x",
-            channel, source_id, actual_source_id, current_value, new_value
+            "Setting channel %d to source ID %d: 0x%08x → 0x%08x",
+            channel, source_id, current_value, new_value
         )
 
         # Write the modified packed value
@@ -1055,16 +1054,15 @@ class MezzoClient:
                 state['mutes'][i + 1] = bool(bytes_to_uint8(responses[5 + i].data))
 
         # Parse sources (decode packed manual source selection register)
-        # Source ID to Input Number mapping: 1→1, 5→2, 9→3, 13→4
-        source_to_input = {1: 1, 5: 2, 9: 3, 13: 4}
+        # Store actual source IDs: 1=Input1, 3=Dante1, 5=Input2, 7=Dante2, 9=Input3, 13=Input4
         if not responses[9].is_nak():
             packed_value = bytes_to_int32(responses[9].data)
             # Channel 1 source is in byte 0 (bits 0-7)
             ch1_source_id = packed_value & 0xFF
-            state['sources'][1] = source_to_input.get(ch1_source_id, 1)  # Default to input 1
+            state['sources'][1] = ch1_source_id if ch1_source_id in {1, 3, 5, 7, 9, 13} else 1
             # Channel 2 source is in byte 1 (bits 8-15)
             ch2_source_id = (packed_value >> 8) & 0xFF
-            state['sources'][2] = source_to_input.get(ch2_source_id, 1)  # Default to input 1
+            state['sources'][2] = ch2_source_id if ch2_source_id in {1, 3, 5, 7, 9, 13} else 1
             # Channels 3 & 4 don't exist on Mezzo 602 AD (only 2 output channels)
             state['sources'][3] = 1
             state['sources'][4] = 1
