@@ -855,10 +855,10 @@ class MezzoClient:
 
     async def get_all_source_eq(self) -> List[Dict[str, Any]]:
         """
-        Read all active Source EQ band configurations.
+        Read all Source EQ band configurations from output channel 1.
 
         Returns:
-            List of 4 bands with EQ config for currently active input source
+            List of 2 bands with EQ config (Source EQ has 2 bands per channel)
 
         Raises:
             ConnectionError: If not connected
@@ -870,13 +870,13 @@ class MezzoClient:
             NUM_SOURCE_EQ_BANDS,
         )
 
-        # Build multicommand to read all Source EQ bands at once
+        # Build multicommand to read all Source EQ bands from channel 1
         commands = []
         for band in range(1, NUM_SOURCE_EQ_BANDS + 1):
-            addr = get_source_eq_biquad_address(band)
+            addr = get_source_eq_biquad_address(band, channel=1)
             commands.append(ReadCommand(addr, EQ_BIQUAD_SIZE))
 
-        _LOGGER.debug("Reading all Source EQ settings (4 bands)...")
+        _LOGGER.debug("Reading all Source EQ settings (%d bands)...", NUM_SOURCE_EQ_BANDS)
         responses = await self._udp.send_request(commands)
 
         # Parse responses
@@ -913,7 +913,7 @@ class MezzoClient:
         """
         Capture complete current amplifier state for scene creation.
 
-        Reads all volumes, mutes, sources, EQ settings, and standby state.
+        Reads all volumes, mutes, sources, Source EQ settings, and standby state.
 
         Returns:
             Dictionary with complete scene configuration ready to save
@@ -927,19 +927,20 @@ class MezzoClient:
         # Get basic state
         state = await self.get_all_state()
 
-        # Get EQ settings
-        eq_config = await self.get_all_eq()
+        # Get Source EQ settings (2 bands)
+        source_eq_config = await self.get_all_source_eq()
 
         # Build scene configuration
         scene_config = {
             "volumes": [state['volumes'].get(i, 0.5) for i in range(1, NUM_CHANNELS + 1)],
             "mutes": [state['mutes'].get(i, False) for i in range(1, NUM_CHANNELS + 1)],
             "sources": [state['sources'].get(i, 0) for i in range(1, NUM_CHANNELS + 1)],
-            "eq": eq_config,
+            "source_eq": source_eq_config,  # 2 Source EQ bands
             "standby": state.get('standby', False),
         }
 
-        _LOGGER.info("Captured state: %d channels with full EQ", NUM_CHANNELS)
+        _LOGGER.info("Captured state: %d channels with Source EQ (%d bands)",
+                     NUM_CHANNELS, len(source_eq_config))
         return scene_config
 
     async def apply_scene(self, scene_config: Dict[str, Any]) -> None:
@@ -947,7 +948,7 @@ class MezzoClient:
         Apply a complete scene configuration via multicommand.
 
         This is the recommended way to load scenes/presets. It applies all
-        configuration changes (volumes, mutes, sources, power) in a single
+        configuration changes (volumes, mutes, sources, Source EQ, power) in a single
         PBus packet for maximum efficiency and atomicity.
 
         Args:
@@ -955,7 +956,7 @@ class MezzoClient:
                 - volumes: List[float] - Volume levels 0.0-1.0 for channels 1-4
                 - mutes: List[bool] - Mute states for channels 1-4
                 - sources: List[int] - Source IDs for channels 1-4
-                - eq: List[List[Dict]] - EQ settings (4 channels x 4 bands) (optional)
+                - source_eq: List[Dict] - Source EQ settings (2 bands) (optional)
                 - standby: bool - Standby state (optional)
 
         Raises:
@@ -968,6 +969,7 @@ class MezzoClient:
                 "volumes": [0.7, 0.7, 0.5, 0.5],
                 "mutes": [False, False, False, False],
                 "sources": [1, 1, 2, 2],
+                "source_eq": [{"enabled": 1, "type": 0, ...}, ...],
                 "standby": False
             }
             await client.apply_scene(scene)
@@ -1004,38 +1006,49 @@ class MezzoClient:
             addr = get_source_id_address(ch)
             commands.append(WriteCommand(addr, int32_to_bytes(source)))
 
-        # EQ settings (optional)
-        if 'eq' in scene_config:
-            eq_channels = scene_config['eq']
-            if len(eq_channels) != NUM_CHANNELS:
-                raise ValueError(f"Scene EQ must contain {NUM_CHANNELS} channel configurations")
+        # Source EQ settings (optional) - write to all enabled zone channels
+        if 'source_eq' in scene_config:
+            from .mezzo_memory_map import (
+                get_source_eq_biquad_address,
+                NUM_SOURCE_EQ_BANDS,
+                ADDR_ZONE_ENABLE_CH1,
+            )
 
-            for ch in range(1, NUM_CHANNELS + 1):
-                eq_bands = eq_channels[ch - 1]
-                if len(eq_bands) != NUM_EQ_BANDS:
-                    raise ValueError(f"Channel {ch} EQ must contain {NUM_EQ_BANDS} band configurations")
+            source_eq_bands = scene_config['source_eq']
+            if len(source_eq_bands) != NUM_SOURCE_EQ_BANDS:
+                raise ValueError(f"Scene Source EQ must contain {NUM_SOURCE_EQ_BANDS} band configurations")
 
-                for band in range(1, NUM_EQ_BANDS + 1):
-                    band_config = eq_bands[band - 1]
+            # Read zone enable status to find which output channels are active
+            zone_enable_cmd = ReadCommand(ADDR_ZONE_ENABLE_CH1, 4)
+            zone_responses = await self._udp.send_request([zone_enable_cmd])
 
-                    # Build BiQuad structure (24 bytes):
-                    # +0x00: Enabled (uint32, 4 bytes)
-                    # +0x04: Type (uint32, 4 bytes)
-                    # +0x08: Q (Float, 4 bytes)
-                    # +0x0C: Slope (Float, 4 bytes)
-                    # +0x10: Frequency (uint32, 4 bytes)
-                    # +0x14: Gain (Float, 4 bytes)
-                    biquad_data = struct.pack(
-                        '<IIffIf',  # Little-endian: 2x uint32, 2x float, uint32, float
-                        band_config.get('enabled', 0),
-                        band_config.get('type', 0),
-                        band_config.get('q', 1.0),
-                        band_config.get('slope', 1.0),
-                        band_config.get('frequency', 1000),
-                        band_config.get('gain', 1.0),
-                    )
+            if zone_responses[0].is_nak():
+                _LOGGER.warning("Could not read zone enable status, defaulting to channels 1-2")
+                enabled_channels = [1, 2]
+            else:
+                zone_data = zone_responses[0].data
+                enabled_channels = [ch + 1 for ch in range(4) if ch < len(zone_data) and zone_data[ch] != 0]
+                if not enabled_channels:
+                    enabled_channels = [1, 2]
 
-                    addr = get_user_eq_biquad_address(ch, band)
+            # Write each Source EQ band to all enabled output channels
+            for band in range(1, NUM_SOURCE_EQ_BANDS + 1):
+                band_config = source_eq_bands[band - 1]
+
+                # Build BiQuad structure (24 bytes)
+                biquad_data = struct.pack(
+                    '<IIffIf',
+                    band_config.get('enabled', 0),
+                    band_config.get('type', 0),
+                    band_config.get('q', 1.0),
+                    band_config.get('slope', 1.0),
+                    band_config.get('frequency', 1000),
+                    band_config.get('gain', 1.0),
+                )
+
+                # Write to all enabled zone channels
+                for channel in enabled_channels:
+                    addr = get_source_eq_biquad_address(band, channel)
                     commands.append(WriteCommand(addr, biquad_data))
 
         # Power state (optional)

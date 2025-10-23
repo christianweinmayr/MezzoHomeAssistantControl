@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import DEFAULT_SCENES
-from .mezzo_memory_map import NUM_CHANNELS, NUM_EQ_BANDS
+from .mezzo_memory_map import NUM_CHANNELS, NUM_SOURCE_EQ_BANDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -143,24 +143,19 @@ class SceneManager:
             if not isinstance(src, int) or not -1 <= src <= 31:
                 raise ValueError(f"Source {i+1} must be between -1 and 31")
 
-        # Validate EQ if present
-        if "eq" in config:
-            eq = config["eq"]
-            if len(eq) != NUM_CHANNELS:
-                raise ValueError(f"Scene EQ must have {NUM_CHANNELS} channel configurations")
+        # Validate Source EQ if present
+        if "source_eq" in config:
+            source_eq = config["source_eq"]
+            if len(source_eq) != NUM_SOURCE_EQ_BANDS:
+                raise ValueError(f"Scene Source EQ must have {NUM_SOURCE_EQ_BANDS} bands")
 
-            for ch_idx, channel_eq in enumerate(eq):
-                if len(channel_eq) != NUM_EQ_BANDS:
-                    raise ValueError(f"Channel {ch_idx+1} EQ must have {NUM_EQ_BANDS} bands")
-
-                for band_idx, band in enumerate(channel_eq):
-                    required_band_fields = ["enabled", "type", "q", "frequency", "gain", "slope"]
-                    for field in required_band_fields:
-                        if field not in band:
-                            raise ValueError(
-                                f"EQ band {band_idx+1} on channel {ch_idx+1} "
-                                f"missing field: {field}"
-                            )
+            for band_idx, band in enumerate(source_eq):
+                required_band_fields = ["enabled", "type", "q", "frequency", "gain", "slope"]
+                for field in required_band_fields:
+                    if field not in band:
+                        raise ValueError(
+                            f"Source EQ band {band_idx+1} missing field: {field}"
+                        )
 
         # Validate standby if present
         if "standby" in config:
@@ -216,7 +211,7 @@ class SceneManager:
             "volumes": scene_config["volumes"],
             "mutes": scene_config["mutes"],
             "sources": scene_config["sources"],
-            "eq": scene_config.get("eq", []),
+            "source_eq": scene_config.get("source_eq", []),
             "standby": scene_config.get("standby", False),
             "created_at": now,
             "updated_at": now,
@@ -265,7 +260,7 @@ class SceneManager:
             "volumes": updated_config["volumes"],
             "mutes": updated_config["mutes"],
             "sources": updated_config["sources"],
-            "eq": updated_config.get("eq", []),
+            "source_eq": updated_config.get("source_eq", []),
             "standby": updated_config.get("standby", False),
             "updated_at": now,
         })
