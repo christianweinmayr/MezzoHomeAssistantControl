@@ -159,7 +159,7 @@ class MezzoEQSensor(CoordinatorEntity, SensorEntity):
             "model": "Mezzo 602 AD",
         }
         self._attr_unique_id = f"{entry.entry_id}_{UID_EQ}{channel}"
-        self._attr_name = f"EQ Channel {channel}"
+        self._attr_name = f"User EQ Channel {channel}"
 
     @property
     def icon(self) -> str:

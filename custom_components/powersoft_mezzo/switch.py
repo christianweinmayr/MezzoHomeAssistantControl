@@ -179,7 +179,7 @@ class MezzoEQBandSwitch(CoordinatorEntity, SwitchEntity):
             "model": "Mezzo 602 AD",
         }
         self._attr_unique_id = f"{entry.entry_id}_eq_ch{channel}_band{band}_enable"
-        self._attr_name = f"EQ Channel {channel} Band {band} Enable"
+        self._attr_name = f"User EQ Channel {channel} Band {band} Enable"
 
     @property
     def is_on(self) -> bool | None:

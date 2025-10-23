@@ -245,7 +245,7 @@ class MezzoEQTypeSelect(CoordinatorEntity, SelectEntity):
             "model": "Mezzo 602 AD",
         }
         self._attr_unique_id = f"{entry.entry_id}_eq_ch{channel}_band{band}_type"
-        self._attr_name = f"EQ Channel {channel} Band {band} Type"
+        self._attr_name = f"User EQ Channel {channel} Band {band} Type"
         self._attr_options = list(EQ_TYPE_OPTIONS.values())
 
     @property

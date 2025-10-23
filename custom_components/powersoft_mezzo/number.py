@@ -141,7 +141,7 @@ class MezzoEQFrequencyNumber(CoordinatorEntity, NumberEntity):
             "model": "Mezzo 602 AD",
         }
         self._attr_unique_id = f"{entry.entry_id}_eq_ch{channel}_band{band}_frequency"
-        self._attr_name = f"EQ Channel {channel} Band {band} Frequency"
+        self._attr_name = f"User EQ Channel {channel} Band {band} Frequency"
 
     @property
     def native_value(self) -> float | None:
@@ -212,7 +212,7 @@ class MezzoEQGainNumber(CoordinatorEntity, NumberEntity):
             "model": "Mezzo 602 AD",
         }
         self._attr_unique_id = f"{entry.entry_id}_eq_ch{channel}_band{band}_gain"
-        self._attr_name = f"EQ Channel {channel} Band {band} Gain"
+        self._attr_name = f"User EQ Channel {channel} Band {band} Gain"
 
     @property
     def native_value(self) -> float | None:
@@ -284,7 +284,7 @@ class MezzoEQQNumber(CoordinatorEntity, NumberEntity):
             "model": "Mezzo 602 AD",
         }
         self._attr_unique_id = f"{entry.entry_id}_eq_ch{channel}_band{band}_q"
-        self._attr_name = f"EQ Channel {channel} Band {band} Q"
+        self._attr_name = f"User EQ Channel {channel} Band {band} Q"
 
     @property
     def native_value(self) -> float | None:
