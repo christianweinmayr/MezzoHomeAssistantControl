@@ -356,7 +356,7 @@ ADDR_SOURCE_EQ_BIQUAD3 = 0x0000f130  # Band 3: 24 bytes
 ADDR_SOURCE_EQ_BIQUAD4 = 0x0000f148  # Band 4: 24 bytes
 
 # Number of Source EQ bands (exposed to user)
-NUM_SOURCE_EQ_BANDS = 4
+NUM_SOURCE_EQ_BANDS = 2  # Source EQ has 2 bands per output channel (not 4 like User EQ)
 
 
 # ============================================================================
@@ -567,7 +567,8 @@ def get_source_eq_biquad_address(band: int, channel: int = 1) -> int:
     if not 1 <= channel <= NUM_CHANNELS:
         raise ValueError(f"Channel must be 1-{NUM_CHANNELS}")
 
-    # Each output channel has 4 bands × 24 bytes = 96 bytes (0x60)
+    # Each output channel has 2 Source EQ bands × 24 bytes = 48 bytes (0x30)
+    # Protocol addresses: Ch1=0xf100, Ch2=0xf130, Ch3=0xf160, Ch4=0xf190
     channel_offset = (channel - 1) * (NUM_SOURCE_EQ_BANDS * EQ_BIQUAD_SIZE)
     band_offset = (band - 1) * EQ_BIQUAD_SIZE
 
