@@ -9,7 +9,13 @@
       "Bash(git commit:*)",
       "Bash(gh:*)",
       "Bash(git push:*)",
-      "Read(//Users/christianweinmayr/Downloads/**)"
+      "Read(//Users/christianweinmayr/Downloads/**)",
+      "Bash(curl -o /Users/christianweinmayr/GIT/MezzoHomeAssistantControl/custom_components/powersoft_mezzo/icon.png \"https://www.powersoft.com/wp-content/uploads/2018/12/cropped-ico-POWERSOFT-192x192.png\")",
+      "Bash(git ls-tree HEAD custom_components/powersoft_mezzo/icon.png)",
+      "WebFetch(domain:developers.home-assistant.io)",
+      "Bash(sips -z 256 256 /Users/christianweinmayr/GIT/MezzoHomeAssistantControl/custom_components/powersoft_mezzo/icon.png)",
+      "Bash(git tag -a v0.1.3 -m \"Release v0.1.3 - Volume control fix and HACS support\")",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

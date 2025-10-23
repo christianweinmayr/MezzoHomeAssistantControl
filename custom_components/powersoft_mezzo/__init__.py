@@ -417,9 +417,25 @@ async def async_register_services(hass: HomeAssistant) -> None:
                         f"gain={band_data['gain']:.2f}, q={band_data['q']:.2f}"
                     )
 
-            # Source EQ (active input EQ)
+            # Source EQ (active input EQ) - parse first 4 bands
             output_lines.append("\n2. SOURCE EQ (0x0000f100-0x0000f340):")
             output_lines.append(f"   Status: Active input EQ - {len(eq_data['source_eq'])} bytes read")
+
+            # Parse first 4 BiQuads (4 bands × 24 bytes = 96 bytes)
+            import struct
+            for band in range(1, 5):
+                offset = (band - 1) * 24
+                if offset + 24 <= len(eq_data['source_eq']):
+                    biquad_data = eq_data['source_eq'][offset:offset + 24]
+                    enabled, filt_type, q, slope, frequency, gain = struct.unpack('<IIffIf', biquad_data)
+                    type_name = {0: "Peaking", 11: "Low Shelving", 12: "High Shelving",
+                                13: "Low Pass", 14: "High Pass", 15: "Band Pass",
+                                16: "Band Stop", 17: "All Pass"}.get(filt_type, f"Type {filt_type}")
+                    output_lines.append(
+                        f"   Band {band}: enabled={enabled}, type={type_name}, "
+                        f"freq={frequency}Hz, gain={gain:.2f}, q={q:.2f}"
+                    )
+
             output_lines.append(f"   Raw hex (first 256 bytes): {eq_data['source_eq'][:256].hex()}")
 
             # Source Config area
