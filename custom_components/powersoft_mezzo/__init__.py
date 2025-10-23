@@ -417,10 +417,10 @@ async def async_register_services(hass: HomeAssistant) -> None:
                         f"gain={band_data['gain']:.2f}, q={band_data['q']:.2f}"
                     )
 
-            # Zone EQ (to be discovered)
-            output_lines.append("\n2. ZONE EQ (0x0000f100-0x0000f340):")
-            output_lines.append(f"   Status: UNKNOWN - {len(eq_data['zone_eq'])} bytes read")
-            output_lines.append(f"   Raw hex (first 256 bytes): {eq_data['zone_eq'][:256].hex()}")
+            # Source EQ (active input EQ)
+            output_lines.append("\n2. SOURCE EQ (0x0000f100-0x0000f340):")
+            output_lines.append(f"   Status: Active input EQ - {len(eq_data['source_eq'])} bytes read")
+            output_lines.append(f"   Raw hex (first 256 bytes): {eq_data['source_eq'][:256].hex()}")
 
             # Source Config area
             output_lines.append("\n3. SOURCE CONFIG (0x00002500-0x00002554):")

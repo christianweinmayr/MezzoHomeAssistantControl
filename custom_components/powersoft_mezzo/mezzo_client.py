@@ -485,7 +485,7 @@ class MezzoClient:
         """
         from .mezzo_memory_map import (
             ADDR_USER_EQ_START,
-            ADDR_ZONE_EQ_START,
+            ADDR_SOURCE_EQ_START,
             ADDR_SOURCE_CONFIG_START,
             ADDR_WAYS_START,
         )
@@ -495,10 +495,10 @@ class MezzoClient:
         # Read User EQ (we'll parse this)
         user_eq = await self.get_all_eq()
 
-        # Read Zone EQ area (576 bytes = 0x240)
-        zone_eq_cmd = ReadCommand(ADDR_ZONE_EQ_START, 576)
-        zone_eq_response = await self._udp.send_request([zone_eq_cmd])
-        zone_eq_data = zone_eq_response[0].data if not zone_eq_response[0].is_nak() else b''
+        # Read Source EQ area (576 bytes = 0x240)
+        source_eq_cmd = ReadCommand(ADDR_SOURCE_EQ_START, 576)
+        source_eq_response = await self._udp.send_request([source_eq_cmd])
+        source_eq_data = source_eq_response[0].data if not source_eq_response[0].is_nak() else b''
 
         # Read Source Config area (84 bytes = 0x54)
         source_config_cmd = ReadCommand(ADDR_SOURCE_CONFIG_START, 84)
@@ -512,7 +512,7 @@ class MezzoClient:
 
         return {
             "user_eq": user_eq,
-            "zone_eq": zone_eq_data,
+            "source_eq": source_eq_data,
             "source_config": source_config_data,
             "ways_area": ways_data,
         }
