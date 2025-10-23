@@ -315,8 +315,8 @@ class MezzoClient:
         Args:
             channel: Output channel number (1-2 for Mezzo 602 AD)
             source_id: Hardware source ID. Valid values:
-                      1 = Input 1, 3 = Dante 1, 5 = Input 2, 7 = Dante 2,
-                      9 = Input 3, 13 = Input 4
+                      1=Input1, 5=Input2, 9=Input3, 13=Input4,
+                      3=Dante1, 7=Dante2, 11=Dante3, 15=Dante4
 
         Raises:
             ValueError: If channel or source_id out of range
@@ -326,8 +326,9 @@ class MezzoClient:
         if not 1 <= channel <= 2:  # Mezzo 602 AD has 2 output channels
             raise ValueError(f"Channel must be 1-2")
 
-        # Valid source IDs for Mezzo 602 AD (4 analog inputs + 2 Dante inputs)
-        valid_source_ids = {1, 3, 5, 7, 9, 13}
+        # Valid source IDs for Mezzo 602 AD (4 analog inputs + 4 Dante inputs)
+        # Sequential odd numbers: 1,3,5,7,9,11,13,15
+        valid_source_ids = {1, 3, 5, 7, 9, 11, 13, 15}
         if source_id not in valid_source_ids:
             raise ValueError(f"Source ID must be one of {valid_source_ids}")
 
@@ -1054,15 +1055,17 @@ class MezzoClient:
                 state['mutes'][i + 1] = bool(bytes_to_uint8(responses[5 + i].data))
 
         # Parse sources (decode packed manual source selection register)
-        # Store actual source IDs: 1=Input1, 3=Dante1, 5=Input2, 7=Dante2, 9=Input3, 13=Input4
+        # Store actual source IDs: 1,3,5,7,9,11,13,15 (odd numbers for all inputs)
+        # 1=Input1, 5=Input2, 9=Input3, 13=Input4, 3=Dante1, 7=Dante2, 11=Dante3, 15=Dante4
+        valid_sources = {1, 3, 5, 7, 9, 11, 13, 15}
         if not responses[9].is_nak():
             packed_value = bytes_to_int32(responses[9].data)
             # Channel 1 source is in byte 0 (bits 0-7)
             ch1_source_id = packed_value & 0xFF
-            state['sources'][1] = ch1_source_id if ch1_source_id in {1, 3, 5, 7, 9, 13} else 1
+            state['sources'][1] = ch1_source_id if ch1_source_id in valid_sources else 1
             # Channel 2 source is in byte 1 (bits 8-15)
             ch2_source_id = (packed_value >> 8) & 0xFF
-            state['sources'][2] = ch2_source_id if ch2_source_id in {1, 3, 5, 7, 9, 13} else 1
+            state['sources'][2] = ch2_source_id if ch2_source_id in valid_sources else 1
             # Channels 3 & 4 don't exist on Mezzo 602 AD (only 2 output channels)
             state['sources'][3] = 1
             state['sources'][4] = 1

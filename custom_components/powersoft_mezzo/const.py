@@ -80,14 +80,17 @@ NUM_CHANNELS: Final = 4
 CHANNEL_NUMBERS: Final = list(range(1, NUM_CHANNELS + 1))
 
 # Source options (actual hardware source IDs → user-friendly names)
-# Pattern: Analog inputs (1,5,9,13) interleaved with Dante (3,7)
+# Pattern: Sequential odd numbers 1,3,5,7,9,11,13,15 mapped to inputs
+# Displayed order: Analog inputs first, then Dante inputs
 SOURCE_OPTIONS: Final = {
     "1": "Input 1",
-    "3": "Dante 1",
     "5": "Input 2",
-    "7": "Dante 2",
     "9": "Input 3",
     "13": "Input 4",
+    "3": "Dante 1",
+    "7": "Dante 2",
+    "11": "Dante 3",
+    "15": "Dante 4",
 }
 
 # Service names
