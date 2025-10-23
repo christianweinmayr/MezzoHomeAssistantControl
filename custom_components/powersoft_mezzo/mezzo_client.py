@@ -308,36 +308,57 @@ class MezzoClient:
         """
         Set input source for channel.
 
+        The Mezzo uses a packed format where each output channel's source
+        is stored in a separate byte of the Manual Source Selection register.
+
         Args:
-            channel: Channel number (1-4)
-            source_id: Source ID (-1 for muted, 0-31 for sources)
+            channel: Output channel number (1-2 for Mezzo 602 AD)
+            source_id: Input number (1-4 for Mezzo 602 AD inputs)
+                      Maps to actual source IDs: 1→1, 2→5, 3→9, 4→13
 
         Raises:
             ValueError: If channel or source_id out of range
             ConnectionError: If not connected
             TimeoutError: If request times out
         """
-        if not 1 <= channel <= NUM_CHANNELS:
-            raise ValueError(f"Channel must be 1-{NUM_CHANNELS}")
-        if not SOURCE_MIN <= source_id <= SOURCE_MAX:
-            raise ValueError(f"Source ID must be {SOURCE_MIN}-{SOURCE_MAX}")
+        if not 1 <= channel <= 2:  # Mezzo 602 AD has 2 output channels
+            raise ValueError(f"Channel must be 1-2")
+        if not 1 <= source_id <= 4:  # Mezzo 602 AD has 4 inputs
+            raise ValueError(f"Source ID must be 1-4")
 
-        from .mezzo_memory_map import get_priority_source_address
+        from .mezzo_memory_map import ADDR_MANUAL_SOURCE_SELECTION
 
-        # Get the priority source address for this channel
-        priority_addr = get_priority_source_address(channel)
+        # Map input numbers to actual source IDs
+        # Input 1 → Source 1, Input 2 → Source 5, Input 3 → Source 9, Input 4 → Source 13
+        source_id_map = {1: 1, 2: 5, 3: 9, 4: 13}
+        actual_source_id = source_id_map[source_id]
+
+        # Read current packed value
+        read_cmd = ReadCommand(ADDR_MANUAL_SOURCE_SELECTION, 4)
+        responses = await self._udp.send_request([read_cmd])
+
+        if responses[0].is_nak():
+            raise ValueError("Failed to read current source selection")
+
+        current_value = bytes_to_int32(responses[0].data)
+
+        # Modify the appropriate byte for this channel
+        # Channel 1 = byte 0 (bits 0-7), Channel 2 = byte 1 (bits 8-15)
+        if channel == 1:
+            # Clear byte 0 and set new value
+            new_value = (current_value & 0xFFFFFF00) | actual_source_id
+        else:  # channel == 2
+            # Clear byte 1 and set new value
+            new_value = (current_value & 0xFFFF00FF) | (actual_source_id << 8)
 
         _LOGGER.warning(
-            "Setting channel %d source to %d - writing to priority address 0x%08x",
-            channel, source_id, priority_addr
+            "Setting channel %d to input %d (source ID %d): 0x%08x → 0x%08x",
+            channel, source_id, actual_source_id, current_value, new_value
         )
 
-        # Write ONLY to the per-channel priority source address
-        # DO NOT write to the global manual selection register (0x00002224)
-        # as it causes "last write wins" behavior affecting all channels
-        cmd = WriteCommand(priority_addr, int32_to_bytes(source_id))
-
-        responses = await self._udp.send_request([cmd])
+        # Write the modified packed value
+        write_cmd = WriteCommand(ADDR_MANUAL_SOURCE_SELECTION, int32_to_bytes(new_value))
+        responses = await self._udp.send_request([write_cmd])
 
         if responses[0].is_nak():
             raise ValueError("Failed to set source")
@@ -1001,11 +1022,8 @@ class MezzoClient:
             ReadCommand(get_user_mute_address(2), 1),
             ReadCommand(get_user_mute_address(3), 1),
             ReadCommand(get_user_mute_address(4), 1),
-            # Sources (all channels)
-            ReadCommand(get_source_id_address(1), 4),
-            ReadCommand(get_source_id_address(2), 4),
-            ReadCommand(get_source_id_address(3), 4),
-            ReadCommand(get_source_id_address(4), 4),
+            # Sources (read packed manual source selection register)
+            ReadCommand(ADDR_MANUAL_SOURCE_SELECTION, 4),
             # Temperatures
             ReadCommand(ADDR_TEMP_TRANSFORMER, 4),
             ReadCommand(ADDR_TEMP_HEATSINK, 4),
@@ -1041,23 +1059,33 @@ class MezzoClient:
             if not responses[5 + i].is_nak():
                 state['mutes'][i + 1] = bool(bytes_to_uint8(responses[5 + i].data))
 
-        # Parse sources
-        for i in range(NUM_CHANNELS):
-            if not responses[9 + i].is_nak():
-                state['sources'][i + 1] = bytes_to_int32(responses[9 + i].data)
+        # Parse sources (decode packed manual source selection register)
+        # Source ID to Input Number mapping: 1→1, 5→2, 9→3, 13→4
+        source_to_input = {1: 1, 5: 2, 9: 3, 13: 4}
+        if not responses[9].is_nak():
+            packed_value = bytes_to_int32(responses[9].data)
+            # Channel 1 source is in byte 0 (bits 0-7)
+            ch1_source_id = packed_value & 0xFF
+            state['sources'][1] = source_to_input.get(ch1_source_id, 1)  # Default to input 1
+            # Channel 2 source is in byte 1 (bits 8-15)
+            ch2_source_id = (packed_value >> 8) & 0xFF
+            state['sources'][2] = source_to_input.get(ch2_source_id, 1)  # Default to input 1
+            # Channels 3 & 4 don't exist on Mezzo 602 AD (only 2 output channels)
+            state['sources'][3] = 1
+            state['sources'][4] = 1
 
-        # Parse temperatures
-        if not responses[13].is_nak():
-            state['temperatures']['transformer'] = bytes_to_float(responses[13].data)
-        if not responses[14].is_nak():
-            state['temperatures']['heatsink'] = bytes_to_float(responses[14].data)
+        # Parse temperatures (adjusted indices after removing per-channel source reads)
+        if not responses[10].is_nak():
+            state['temperatures']['transformer'] = bytes_to_float(responses[10].data)
+        if not responses[11].is_nak():
+            state['temperatures']['heatsink'] = bytes_to_float(responses[11].data)
 
         # Parse fault
-        if not responses[15].is_nak():
-            state['fault_code'] = bytes_to_uint8(responses[15].data)
+        if not responses[12].is_nak():
+            state['fault_code'] = bytes_to_uint8(responses[12].data)
 
-        # Parse EQ bands (starting at response index 16)
-        resp_idx = 16
+        # Parse EQ bands (starting at response index 13)
+        resp_idx = 13
         for ch in range(1, NUM_CHANNELS + 1):
             if ch not in state['eq']:
                 state['eq'][ch] = {}

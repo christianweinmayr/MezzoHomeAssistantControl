@@ -81,8 +81,10 @@ CHANNEL_NUMBERS: Final = list(range(1, NUM_CHANNELS + 1))
 
 # Source options (-1 = muted, 0-31 = sources)
 SOURCE_OPTIONS: Final = {
-    "-1": "Muted",
-    **{str(i): f"Source {i}" for i in range(32)},
+    "1": "Input 1",
+    "2": "Input 2",
+    "3": "Input 3",
+    "4": "Input 4",
 }
 
 # Service names
