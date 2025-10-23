@@ -88,3 +88,7 @@ enable_manual_source_mode:
 read_source_registers:
   name: Read Source Registers
   description: Diagnostic tool to read and display all source-related registers. Shows current source ID status, priority source settings, and manual source selection mode for all channels.
+
+read_all_eq_registers:
+  name: Read All EQ Registers
+  description: Diagnostic tool to read and display all EQ-related memory areas (User EQ, Zone EQ, Source Config, Ways area). Use this to reverse-engineer different EQ types by comparing before/after changes in Armonía Plus.

@@ -470,6 +470,53 @@ class MezzoClient:
 
         return result
 
+    async def read_all_eq_areas(self) -> dict:
+        """
+        Read all EQ-related memory areas for diagnostics and reverse engineering.
+
+        Reads:
+        - User EQ (0x00004100-0x00004280) - 384 bytes - KNOWN structure
+        - Zone EQ (0x0000f100-0x0000f340) - 576 bytes - UNKNOWN structure
+        - Source Config (0x00002500-0x00002554) - 84 bytes - might contain source EQ
+        - Ways area (0x00007000-0x00007950) - 2384 bytes - might contain ways EQ
+
+        Returns:
+            Dictionary with all EQ area data
+        """
+        from .mezzo_memory_map import (
+            ADDR_USER_EQ_START,
+            ADDR_ZONE_EQ_START,
+            ADDR_SOURCE_CONFIG_START,
+            ADDR_WAYS_START,
+        )
+
+        _LOGGER.info("Reading all EQ areas for diagnostics...")
+
+        # Read User EQ (we'll parse this)
+        user_eq = await self.get_all_eq()
+
+        # Read Zone EQ area (576 bytes = 0x240)
+        zone_eq_cmd = ReadCommand(ADDR_ZONE_EQ_START, 576)
+        zone_eq_response = await self._udp.send_request([zone_eq_cmd])
+        zone_eq_data = zone_eq_response[0].data if not zone_eq_response[0].is_nak() else b''
+
+        # Read Source Config area (84 bytes = 0x54)
+        source_config_cmd = ReadCommand(ADDR_SOURCE_CONFIG_START, 84)
+        source_config_response = await self._udp.send_request([source_config_cmd])
+        source_config_data = source_config_response[0].data if not source_config_response[0].is_nak() else b''
+
+        # Read Ways area (2384 bytes = 0x950) - this is large, might want to sample
+        ways_cmd = ReadCommand(ADDR_WAYS_START, 2384)
+        ways_response = await self._udp.send_request([ways_cmd])
+        ways_data = ways_response[0].data if not ways_response[0].is_nak() else b''
+
+        return {
+            "user_eq": user_eq,
+            "zone_eq": zone_eq_data,
+            "source_config": source_config_data,
+            "ways_area": ways_data,
+        }
+
     async def get_source(self, channel: int) -> int:
         """
         Get current input source for channel.

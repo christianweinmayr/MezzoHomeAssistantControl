@@ -387,6 +387,82 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
             raise
 
+    async def handle_read_all_eq_registers(call):
+        """Handle read_all_eq_registers service call (diagnostic)."""
+        _LOGGER.warning("Service call: read_all_eq_registers - Reading all EQ memory areas...")
+
+        # Get the first available entry
+        entry_id = next(iter(hass.data[DOMAIN].keys()))
+        data = hass.data[DOMAIN][entry_id]
+        client: MezzoClient = data[CLIENT]
+
+        try:
+            # Read all EQ-related memory areas
+            eq_data = await client.read_all_eq_areas()
+
+            # Build formatted output
+            output_lines = ["EQ Register Diagnostics:"]
+            output_lines.append("=" * 60)
+
+            # User EQ (currently implemented)
+            output_lines.append("\n1. USER EQ (0x00004100-0x00004280):")
+            output_lines.append("   Status: IMPLEMENTED - 4 bands per channel")
+            for ch in range(1, 5):
+                output_lines.append(f"\n   Channel {ch}:")
+                for band in range(1, 5):
+                    band_data = eq_data["user_eq"][ch-1][band-1]
+                    output_lines.append(
+                        f"     Band {band}: enabled={band_data['enabled']}, "
+                        f"type={band_data['type']}, freq={band_data['frequency']}Hz, "
+                        f"gain={band_data['gain']:.2f}, q={band_data['q']:.2f}"
+                    )
+
+            # Zone EQ (to be discovered)
+            output_lines.append("\n2. ZONE EQ (0x0000f100-0x0000f340):")
+            output_lines.append(f"   Status: UNKNOWN - {len(eq_data['zone_eq'])} bytes read")
+            output_lines.append(f"   Raw hex (first 256 bytes): {eq_data['zone_eq'][:256].hex()}")
+
+            # Source Config area
+            output_lines.append("\n3. SOURCE CONFIG (0x00002500-0x00002554):")
+            output_lines.append(f"   Status: UNKNOWN - {len(eq_data['source_config'])} bytes read")
+            output_lines.append(f"   Raw hex: {eq_data['source_config'].hex()}")
+
+            # Ways area (sample only - it's large)
+            output_lines.append("\n4. WAYS AREA (0x00007000-0x00007950):")
+            output_lines.append(f"   Status: UNKNOWN - {len(eq_data['ways_area'])} bytes read")
+            output_lines.append(f"   Raw hex (first 256 bytes): {eq_data['ways_area'][:256].hex()}")
+
+            output_text = "\n".join(output_lines)
+
+            # Log to Home Assistant logs
+            _LOGGER.warning("EQ Register Diagnostics:\n%s", output_text)
+
+            # Create persistent notification visible in UI
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "EQ Register Diagnostics",
+                    "message": f"```\n{output_text}\n```",
+                    "notification_id": f"{DOMAIN}_eq_registers",
+                },
+            )
+
+            _LOGGER.warning("EQ register read complete. Check notifications for results.")
+
+        except Exception as err:
+            _LOGGER.error("Failed to read EQ registers: %s", err)
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "EQ Register Read Failed",
+                    "message": f"Error reading EQ registers: {err}",
+                    "notification_id": f"{DOMAIN}_eq_registers_error",
+                },
+            )
+            raise
+
     async def handle_enable_manual_source_mode(call):
         """Handle enable_manual_source_mode service call (emergency recovery)."""
         source_id = call.data["source_id"]
@@ -492,6 +568,13 @@ async def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         "read_source_registers",
         handle_read_source_registers,
+        schema=vol.Schema({}),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "read_all_eq_registers",
+        handle_read_all_eq_registers,
         schema=vol.Schema({}),
     )
 
