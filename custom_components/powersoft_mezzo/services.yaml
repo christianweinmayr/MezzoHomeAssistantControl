@@ -92,3 +92,7 @@ read_source_registers:
 read_all_eq_registers:
   name: Read All EQ Registers
   description: Diagnostic tool to read and display all EQ-related memory areas (User EQ, Zone EQ, Source Config, Ways area). Use this to reverse-engineer different EQ types by comparing before/after changes in Armonía Plus.
+
+read_zone_registers:
+  name: Read Zone Registers
+  description: Diagnostic tool to read and display Zone control registers (enable, mute, gain, GUIDs) to understand zone configuration.

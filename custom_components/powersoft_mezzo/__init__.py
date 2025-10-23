@@ -479,6 +479,119 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
             raise
 
+    async def handle_read_zone_registers(call):
+        """Handle read_zone_registers service call (diagnostic)."""
+        _LOGGER.warning("Service call: read_zone_registers - Reading Zone control registers...")
+
+        # Get the first available entry
+        entry_id = next(iter(hass.data[DOMAIN].keys()))
+        data = hass.data[DOMAIN][entry_id]
+        client: MezzoClient = data[CLIENT]
+
+        try:
+            from .pbus_protocol import ReadCommand
+            from .mezzo_memory_map import (
+                ADDR_ZONE_ENABLE_CH1, ADDR_ZONE_MUTE_CH1,
+                ADDR_ZONE_GAIN_CH1, ADDR_ZONE_SOURCE_GUID_CH1,
+                ADDR_ZONE_GUID_CH1
+            )
+            from .mezzo_protocol_helpers import bytes_to_uint8, bytes_to_float, bytes_to_uint32
+
+            # Read Zone control registers
+            commands = [
+                # Zone Enable (4 bytes, one per channel)
+                ReadCommand(ADDR_ZONE_ENABLE_CH1, 4),
+                # Zone Mute (4 bytes, one per channel)
+                ReadCommand(ADDR_ZONE_MUTE_CH1, 4),
+                # Zone Gain (16 bytes, 4 floats)
+                ReadCommand(ADDR_ZONE_GAIN_CH1, 16),
+                # Zone Source GUIDs (16 bytes, 4 uint32s)
+                ReadCommand(ADDR_ZONE_SOURCE_GUID_CH1, 16),
+                # Zone GUIDs (16 bytes, 4 uint32s)
+                ReadCommand(ADDR_ZONE_GUID_CH1, 16),
+            ]
+
+            responses = await client._udp.send_request(commands)
+
+            # Build formatted output
+            output_lines = ["Zone Register Diagnostics:"]
+            output_lines.append("=" * 60)
+
+            # Zone Enable
+            output_lines.append("\nZone Enable (per channel):")
+            if not responses[0].is_nak():
+                for i in range(4):
+                    val = responses[0].data[i] if i < len(responses[0].data) else 0
+                    output_lines.append(f"  Channel {i+1}: {val}")
+
+            # Zone Mute
+            output_lines.append("\nZone Mute (per channel):")
+            if not responses[1].is_nak():
+                for i in range(4):
+                    val = responses[1].data[i] if i < len(responses[1].data) else 0
+                    output_lines.append(f"  Channel {i+1}: {val}")
+
+            # Zone Gain
+            output_lines.append("\nZone Gain (linear, per channel):")
+            if not responses[2].is_nak():
+                import struct
+                for i in range(4):
+                    offset = i * 4
+                    if offset + 4 <= len(responses[2].data):
+                        val = struct.unpack('<f', responses[2].data[offset:offset+4])[0]
+                        output_lines.append(f"  Channel {i+1}: {val:.4f}")
+
+            # Zone Source GUIDs
+            output_lines.append("\nZone Source GUIDs (per channel):")
+            if not responses[3].is_nak():
+                import struct
+                for i in range(4):
+                    offset = i * 4
+                    if offset + 4 <= len(responses[3].data):
+                        val = struct.unpack('<I', responses[3].data[offset:offset+4])[0]
+                        output_lines.append(f"  Channel {i+1}: 0x{val:08x}")
+
+            # Zone GUIDs
+            output_lines.append("\nZone GUIDs (per channel):")
+            if not responses[4].is_nak():
+                import struct
+                for i in range(4):
+                    offset = i * 4
+                    if offset + 4 <= len(responses[4].data):
+                        val = struct.unpack('<I', responses[4].data[offset:offset+4])[0]
+                        output_lines.append(f"  Channel {i+1}: 0x{val:08x}")
+
+            output_text = "\n".join(output_lines)
+
+            # Log to Home Assistant logs
+            _LOGGER.warning("Zone Register Diagnostics:\n%s", output_text)
+
+            # Create persistent notification
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Zone Register Diagnostics",
+                    "message": f"```\n{output_text}\n```",
+                    "notification_id": f"{DOMAIN}_zone_registers",
+                },
+            )
+
+            _LOGGER.warning("Zone register read complete. Check notifications for results.")
+
+        except Exception as err:
+            _LOGGER.error("Failed to read zone registers: %s", err)
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Zone Register Read Failed",
+                    "message": f"Error reading zone registers: {err}",
+                    "notification_id": f"{DOMAIN}_zone_registers_error",
+                },
+            )
+            raise
+
     async def handle_enable_manual_source_mode(call):
         """Handle enable_manual_source_mode service call (emergency recovery)."""
         source_id = call.data["source_id"]
@@ -591,6 +704,13 @@ async def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         "read_all_eq_registers",
         handle_read_all_eq_registers,
+        schema=vol.Schema({}),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "read_zone_registers",
+        handle_read_zone_registers,
         schema=vol.Schema({}),
     )
 
