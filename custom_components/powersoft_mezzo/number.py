@@ -361,9 +361,11 @@ class MezzoSourceEQFrequencyNumber(CoordinatorEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         """Return the current frequency."""
-        # Source EQ values are read on first use and cached after writes
-        # Not included in coordinator bulk read to avoid timeout
-        return None  # Will show "Unknown" until first write
+        if (self.coordinator.data and
+            'source_eq' in self.coordinator.data and
+            self._band in self.coordinator.data['source_eq']):
+            return float(self.coordinator.data['source_eq'][self._band].get("frequency", 1000))
+        return None
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the frequency."""
@@ -424,9 +426,11 @@ class MezzoSourceEQGainNumber(CoordinatorEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         """Return the current gain (linear)."""
-        # Source EQ values are read on first use and cached after writes
-        # Not included in coordinator bulk read to avoid timeout
-        return None  # Will show "Unknown" until first write
+        if (self.coordinator.data and
+            'source_eq' in self.coordinator.data and
+            self._band in self.coordinator.data['source_eq']):
+            return self.coordinator.data['source_eq'][self._band].get("gain", 1.0)
+        return None
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the gain."""
@@ -487,9 +491,11 @@ class MezzoSourceEQQNumber(CoordinatorEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         """Return the current Q factor."""
-        # Source EQ values are read on first use and cached after writes
-        # Not included in coordinator bulk read to avoid timeout
-        return None  # Will show "Unknown" until first write
+        if (self.coordinator.data and
+            'source_eq' in self.coordinator.data and
+            self._band in self.coordinator.data['source_eq']):
+            return self.coordinator.data['source_eq'][self._band].get("q", 1.0)
+        return None
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the Q factor."""
