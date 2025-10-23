@@ -713,15 +713,16 @@ class MezzoClient:
     # Source EQ (Active Input EQ)
     # ========================================================================
 
-    async def get_source_eq_band(self, band: int) -> Dict[str, Any]:
+    async def get_source_eq_band(self, band: int, channel: int = 1) -> Dict[str, Any]:
         """
-        Read active Source EQ band configuration from amplifier.
+        Read Source EQ band configuration from amplifier for a specific output channel.
 
-        The Source EQ applies to the currently selected input source.
-        When you switch inputs, different Source EQ settings become active.
+        Source EQ is per OUTPUT CHANNEL in the Zone Block. This reads from the
+        specified channel (defaults to channel 1).
 
         Args:
             band: Band number (1-4)
+            channel: Output channel number (1-4), defaults to 1
 
         Returns:
             Dictionary with EQ band configuration:
@@ -746,12 +747,12 @@ class MezzoClient:
         if not 1 <= band <= NUM_SOURCE_EQ_BANDS:
             raise ValueError(f"Band must be 1-{NUM_SOURCE_EQ_BANDS}")
 
-        addr = get_source_eq_biquad_address(band)
+        addr = get_source_eq_biquad_address(band, channel)
         cmd = ReadCommand(addr, EQ_BIQUAD_SIZE)
         responses = await self._udp.send_request([cmd])
 
         if responses[0].is_nak():
-            raise ValueError(f"Failed to read Source EQ band {band}")
+            raise ValueError(f"Failed to read Source EQ band {band} for channel {channel}")
 
         # Parse BiQuad structure
         data = responses[0].data
@@ -779,7 +780,9 @@ class MezzoClient:
         """
         Write active Source EQ band configuration to amplifier.
 
-        Changes the Source EQ for whichever input is currently active.
+        Source EQ is per OUTPUT CHANNEL. Since output channels are typically
+        linked as stereo pairs, this writes to ALL enabled zone channels
+        (currently channels 1 & 2) to ensure consistent EQ across linked outputs.
 
         Args:
             band: Band number (1-4)
@@ -798,6 +801,7 @@ class MezzoClient:
         from .mezzo_memory_map import (
             get_source_eq_biquad_address,
             NUM_SOURCE_EQ_BANDS,
+            ADDR_ZONE_ENABLE_CH1,
         )
 
         if not 1 <= band <= NUM_SOURCE_EQ_BANDS:
@@ -814,18 +818,40 @@ class MezzoClient:
             gain,
         )
 
-        addr = get_source_eq_biquad_address(band)
-        cmd = WriteCommand(addr, biquad_data)
-
         _LOGGER.debug("Setting Source EQ Band%d: enabled=%d, type=%d, freq=%dHz, gain=%.2f",
                      band, enabled, filt_type, frequency, gain)
 
-        responses = await self._udp.send_request([cmd])
+        # Read zone enable status to find which output channels are active
+        zone_enable_cmd = ReadCommand(ADDR_ZONE_ENABLE_CH1, 4)
+        zone_responses = await self._udp.send_request([zone_enable_cmd])
 
-        if responses[0].is_nak():
-            raise ValueError(f"Failed to set Source EQ band {band}")
+        if zone_responses[0].is_nak():
+            _LOGGER.warning("Could not read zone enable status, defaulting to channels 1-2")
+            enabled_channels = [1, 2]
+        else:
+            # Find which channels are enabled in the zone
+            zone_data = zone_responses[0].data
+            enabled_channels = [ch + 1 for ch in range(4) if ch < len(zone_data) and zone_data[ch] != 0]
+            if not enabled_channels:
+                enabled_channels = [1, 2]  # Fallback
+            _LOGGER.debug("Zone enabled channels: %s", enabled_channels)
 
-        _LOGGER.info("Source EQ Band %d updated successfully", band)
+        # Write Source EQ to all enabled zone output channels
+        write_commands = []
+        for channel in enabled_channels:
+            addr = get_source_eq_biquad_address(band, channel)
+            write_commands.append(WriteCommand(addr, biquad_data))
+
+        responses = await self._udp.send_request(write_commands)
+
+        # Check for failures
+        for i, response in enumerate(responses):
+            if response.is_nak():
+                ch = enabled_channels[i]
+                raise ValueError(f"Failed to set Source EQ band {band} for output channel {ch}")
+
+        _LOGGER.info("Source EQ Band %d updated successfully for output channels %s",
+                     band, enabled_channels)
 
     async def get_all_source_eq(self) -> List[Dict[str, Any]]:
         """

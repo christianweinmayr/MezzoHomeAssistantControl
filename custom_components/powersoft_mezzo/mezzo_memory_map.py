@@ -548,20 +548,27 @@ def get_user_eq_biquad_address(channel: int, band: int) -> int:
     return channel_start + ((band - 1) * EQ_BIQUAD_SIZE)
 
 
-def get_source_eq_biquad_address(band: int) -> int:
+def get_source_eq_biquad_address(band: int, channel: int = 1) -> int:
     """
-    Get active Source EQ BiQuad address for given band (1-4).
+    Get Source EQ BiQuad address for given band and output channel.
 
-    Note: Source EQ applies to the currently active input source,
-    not per output channel.
+    Source EQ is organized per OUTPUT CHANNEL in the Zone Block.
+    When output channels are linked (stereo), you must write to all linked channels.
 
     Args:
         band: EQ band number (1-4)
+        channel: Output channel number (1-4), defaults to 1
 
     Returns:
         Memory address of the BiQuad structure
     """
     if not 1 <= band <= NUM_SOURCE_EQ_BANDS:
         raise ValueError(f"Band must be 1-{NUM_SOURCE_EQ_BANDS}")
+    if not 1 <= channel <= NUM_CHANNELS:
+        raise ValueError(f"Channel must be 1-{NUM_CHANNELS}")
 
-    return ADDR_SOURCE_EQ_START + ((band - 1) * EQ_BIQUAD_SIZE)
+    # Each output channel has 4 bands × 24 bytes = 96 bytes (0x60)
+    channel_offset = (channel - 1) * (NUM_SOURCE_EQ_BANDS * EQ_BIQUAD_SIZE)
+    band_offset = (band - 1) * EQ_BIQUAD_SIZE
+
+    return ADDR_SOURCE_EQ_START + channel_offset + band_offset
