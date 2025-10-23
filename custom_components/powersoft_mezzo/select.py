@@ -326,12 +326,9 @@ class MezzoSourceEQTypeSelect(CoordinatorEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the current filter type."""
-        if (self.coordinator.data and
-            'source_eq' in self.coordinator.data and
-            self._band in self.coordinator.data['source_eq']):
-            filt_type = self.coordinator.data['source_eq'][self._band].get("type", 0)
-            return EQ_TYPE_OPTIONS.get(filt_type, f"Type {filt_type}")
-        return None
+        # Source EQ values are read on first use and cached after writes
+        # Not included in coordinator bulk read to avoid timeout
+        return None  # Will show as empty until first write
 
     async def async_select_option(self, option: str) -> None:
         """Select the filter type."""

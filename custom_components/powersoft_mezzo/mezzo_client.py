@@ -1253,11 +1253,8 @@ class MezzoClient:
                 addr = get_user_eq_biquad_address(ch, band)
                 commands.append(ReadCommand(addr, EQ_BIQUAD_SIZE))
 
-        # Add Source EQ band read commands (4 bands for active input)
-        from .mezzo_memory_map import get_source_eq_biquad_address, NUM_SOURCE_EQ_BANDS
-        for band in range(1, NUM_SOURCE_EQ_BANDS + 1):
-            addr = get_source_eq_biquad_address(band)
-            commands.append(ReadCommand(addr, EQ_BIQUAD_SIZE))
+        # NOTE: Source EQ is NOT included in bulk state read to avoid timeout
+        # Source EQ entities read values on-demand when accessed
 
         responses = await self._udp.send_request(commands)
 
@@ -1269,7 +1266,7 @@ class MezzoClient:
             'temperatures': {},
             'fault_code': None,
             'eq': {},  # Store User EQ by channel/band: eq[channel][band]
-            'source_eq': {},  # Store Source EQ by band: source_eq[band]
+            # Note: source_eq is read on-demand by entities, not in bulk state
         }
 
         # Parse volumes
@@ -1339,36 +1336,6 @@ class MezzoClient:
                         "frequency": 1000,
                         "gain": 1.0,
                     }
-
-        # Parse Source EQ bands (starting after User EQ responses)
-        # resp_idx now points to first Source EQ band
-        from .mezzo_memory_map import NUM_SOURCE_EQ_BANDS
-        for band in range(1, NUM_SOURCE_EQ_BANDS + 1):
-            resp = responses[resp_idx]
-            resp_idx += 1
-
-            if not resp.is_nak():
-                # Parse BiQuad structure
-                data = resp.data
-                enabled, filt_type, q, slope, frequency, gain = struct.unpack('<IIffIf', data)
-                state['source_eq'][band] = {
-                    "enabled": enabled,
-                    "type": filt_type,
-                    "q": q,
-                    "slope": slope,
-                    "frequency": frequency,
-                    "gain": gain,
-                }
-            else:
-                # Use default if read failed
-                state['source_eq'][band] = {
-                    "enabled": 0,
-                    "type": 0,
-                    "q": 1.0,
-                    "slope": 1.0,
-                    "frequency": 1000,
-                    "gain": 1.0,
-                }
 
         return state
 

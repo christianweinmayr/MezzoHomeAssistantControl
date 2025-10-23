@@ -266,11 +266,9 @@ class MezzoSourceEQBandSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         """Return true if the Source EQ band is enabled."""
-        if (self.coordinator.data and
-            'source_eq' in self.coordinator.data and
-            self._band in self.coordinator.data['source_eq']):
-            return bool(self.coordinator.data['source_eq'][self._band].get("enabled", 0))
-        return None
+        # Source EQ values are read on first use and cached after writes
+        # Not included in coordinator bulk read to avoid timeout
+        return None  # Will show as unknown until first write
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable the Source EQ band."""
