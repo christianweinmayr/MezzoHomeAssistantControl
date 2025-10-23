@@ -39,6 +39,7 @@ from .mezzo_memory_map import (
     # Source
     get_source_id_address,
     get_priority_source_address,
+    ADDR_MANUAL_SOURCE_SELECTION,
     SOURCE_MIN,
     SOURCE_MAX,
     SOURCE_MUTED,
@@ -326,8 +327,6 @@ class MezzoClient:
         if not 1 <= source_id <= 4:  # Mezzo 602 AD has 4 inputs
             raise ValueError(f"Source ID must be 1-4")
 
-        from .mezzo_memory_map import ADDR_MANUAL_SOURCE_SELECTION
-
         # Map input numbers to actual source IDs
         # Input 1 → Source 1, Input 2 → Source 5, Input 3 → Source 9, Input 4 → Source 13
         source_id_map = {1: 1, 2: 5, 3: 9, 4: 13}
@@ -376,8 +375,6 @@ class MezzoClient:
             ConnectionError: If not connected
             TimeoutError: If request times out
         """
-        from .mezzo_memory_map import ADDR_MANUAL_SOURCE_SELECTION
-
         cmd = WriteCommand(ADDR_MANUAL_SOURCE_SELECTION, int32_to_bytes(0))
 
         _LOGGER.warning("Disabling manual source selection mode (writing 0 to 0x%08x)",
@@ -406,8 +403,6 @@ class MezzoClient:
         """
         if not SOURCE_MIN <= source_id <= SOURCE_MAX:
             raise ValueError(f"Source ID must be {SOURCE_MIN}-{SOURCE_MAX}")
-
-        from .mezzo_memory_map import ADDR_MANUAL_SOURCE_SELECTION
 
         cmd = WriteCommand(ADDR_MANUAL_SOURCE_SELECTION, int32_to_bytes(source_id))
 
