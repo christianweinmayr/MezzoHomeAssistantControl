@@ -96,3 +96,7 @@ read_all_eq_registers:
 read_zone_registers:
   name: Read Zone Registers
   description: Diagnostic tool to read and display Zone control registers (enable, mute, gain, GUIDs) to understand zone configuration.
+
+read_device_info:
+  name: Read Device Information
+  description: Diagnostic tool to query and display all device identification and status information (model, serial, firmware, MAC, temperatures, standby state). Use this to debug device discovery issues and verify communication.
