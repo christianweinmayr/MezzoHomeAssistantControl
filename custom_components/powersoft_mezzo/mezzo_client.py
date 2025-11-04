@@ -21,8 +21,13 @@ from .pbus_protocol import (
     bytes_to_uint8,
     int32_to_bytes,
     bytes_to_int32,
+    bytes_to_string,
 )
 from .mezzo_memory_map import (
+    # Device Info
+    ADDR_MODEL_NAME,
+    ADDR_SERIAL_NUMBER,
+    ADDR_FIRMWARE_VERSION,
     # Power/Standby
     ADDR_STANDBY_TRIGGER,
     ADDR_STANDBY_STATE,
@@ -1457,22 +1462,67 @@ async def discover_amplifiers(timeout: float = 5.0) -> Dict[str, Dict[str, Any]]
     Returns:
         Dictionary mapping IP addresses to device information
     """
-    # Broadcast a read request for device info
-    # We'll try to read the standby state as a simple identify command
-    cmd = ReadCommand(ADDR_STANDBY_STATE, 4)
+    # Broadcast read requests for device identification
+    # Read: standby state (4 bytes), model name (20 bytes), serial (16 bytes), firmware (20 bytes)
+    commands = [
+        ReadCommand(ADDR_STANDBY_STATE, 4),
+        ReadCommand(ADDR_MODEL_NAME, 20),
+        ReadCommand(ADDR_SERIAL_NUMBER, 16),
+        ReadCommand(ADDR_FIRMWARE_VERSION, 20),
+    ]
 
     _LOGGER.info("Starting amplifier discovery...")
-    responses_by_host = await UDPBroadcaster.broadcast([cmd], timeout=timeout)
+    responses_by_host = await UDPBroadcaster.broadcast(commands, timeout=timeout)
 
     devices = {}
     for host, responses in responses_by_host.items():
-        if responses and not responses[0].is_nak():
-            devices[host] = {
-                'host': host,
-                'standby': bool(bytes_to_uint32(responses[0].data)),
-                'model': 'Mezzo 602 AD',  # Could be extended to read actual model
-            }
-            _LOGGER.info("Discovered amplifier at %s", host)
+        if not responses or len(responses) < 1:
+            continue
+
+        # Parse responses - not all may succeed, so handle gracefully
+        device_info = {'host': host}
+
+        # Standby state (required)
+        if not responses[0].is_nak() and responses[0].data:
+            device_info['standby'] = bool(bytes_to_uint32(responses[0].data))
+        else:
+            device_info['standby'] = False
+
+        # Model name (optional)
+        if len(responses) > 1 and not responses[1].is_nak() and responses[1].data:
+            try:
+                device_info['model'] = bytes_to_string(responses[1].data)
+            except Exception as e:
+                _LOGGER.debug("Failed to parse model name for %s: %s", host, e)
+                device_info['model'] = 'Unknown'
+        else:
+            device_info['model'] = 'Unknown'
+
+        # Serial number (optional)
+        if len(responses) > 2 and not responses[2].is_nak() and responses[2].data:
+            try:
+                device_info['serial'] = bytes_to_string(responses[2].data)
+            except Exception as e:
+                _LOGGER.debug("Failed to parse serial number for %s: %s", host, e)
+                device_info['serial'] = 'Unknown'
+        else:
+            device_info['serial'] = 'Unknown'
+
+        # Firmware version (optional)
+        if len(responses) > 3 and not responses[3].is_nak() and responses[3].data:
+            try:
+                device_info['firmware'] = bytes_to_string(responses[3].data)
+            except Exception as e:
+                _LOGGER.debug("Failed to parse firmware version for %s: %s", host, e)
+                device_info['firmware'] = 'Unknown'
+        else:
+            device_info['firmware'] = 'Unknown'
+
+        devices[host] = device_info
+        _LOGGER.info("Discovered amplifier at %s: %s (S/N: %s, FW: %s)",
+                    host, device_info.get('model', 'Unknown'),
+                    device_info.get('serial', 'Unknown'),
+                    device_info.get('firmware', 'Unknown'))
 
     _LOGGER.info("Discovery complete: found %d amplifier(s)", len(devices))
     return devices
