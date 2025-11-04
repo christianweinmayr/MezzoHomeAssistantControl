@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "menu_options": {
+          "discovery": "Verstärker automatisch erkennen",
+          "manual": "Manuelle Konfiguration"
+        }
+      },
+      "discovery": {
+        "title": "Gefundenen Verstärker auswählen",
+        "description": "{count} Verstärker in Ihrem Netzwerk gefunden. Wählen Sie einen zur Konfiguration aus.",
+        "data": {
+          "host": "Verstärker",
+          "name": "Name (optional)"
+        }
+      },
+      "manual": {
+        "title": "Manuelle Konfiguration",
+        "description": "Geben Sie die IP-Adresse und den Port Ihres Mezzo-Verstärkers ein.",
+        "data": {
+          "host": "Host (IP-Adresse)",
+          "port": "Port",
+          "name": "Name"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Verstärker fehlgeschlagen. Bitte überprüfen Sie die IP-Adresse und stellen Sie sicher, dass der Verstärker eingeschaltet und mit Ihrem Netzwerk verbunden ist.",
+      "timeout": "Verbindungszeitüberschreitung. Der Verstärker hat nicht rechtzeitig geantwortet.",
+      "unknown": "Ein unerwarteter Fehler ist aufgetreten. Bitte überprüfen Sie die Protokolle für weitere Details."
+    },
+    "abort": {
+      "already_configured": "Dieser Verstärker ist bereits konfiguriert.",
+      "no_devices_found": "Keine Mezzo-Verstärker in Ihrem Netzwerk gefunden. Bitte verwenden Sie die manuelle Konfiguration.",
+      "cannot_connect": "Verbindung zum Verstärker nicht möglich."
+    }
+  }
+}
