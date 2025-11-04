@@ -1474,49 +1474,71 @@ async def discover_amplifiers(timeout: float = 5.0) -> Dict[str, Dict[str, Any]]
     _LOGGER.info("Starting amplifier discovery...")
     responses_by_host = await UDPBroadcaster.broadcast(commands, timeout=timeout)
 
+    _LOGGER.info("Discovery received responses from %d host(s)", len(responses_by_host))
+
     devices = {}
     for host, responses in responses_by_host.items():
+        _LOGGER.info("Processing responses from host %s: received %d response(s)",
+                    host, len(responses) if responses else 0)
+
         if not responses or len(responses) < 1:
+            _LOGGER.warning("Host %s: No valid responses, skipping", host)
             continue
 
         # Parse responses - not all may succeed, so handle gracefully
         device_info = {'host': host}
 
+        # Log all responses for debugging
+        for idx, resp in enumerate(responses):
+            _LOGGER.info(
+                "Host %s response[%d]: opcode=0x%02x, addr=0x%08x, size=%d, is_nak=%s, data=%s",
+                host, idx, resp.opcode, resp.address, resp.size, resp.is_nak(),
+                resp.data.hex() if resp.data else "None"
+            )
+
         # Standby state (required)
         if not responses[0].is_nak() and responses[0].data:
             device_info['standby'] = bool(bytes_to_uint32(responses[0].data))
+            _LOGGER.info("Host %s: standby=%s", host, device_info['standby'])
         else:
             device_info['standby'] = False
+            _LOGGER.info("Host %s: standby NAK, defaulting to False", host)
 
         # Model name (optional)
         if len(responses) > 1 and not responses[1].is_nak() and responses[1].data:
             try:
                 device_info['model'] = bytes_to_string(responses[1].data)
+                _LOGGER.info("Host %s: model='%s'", host, device_info['model'])
             except Exception as e:
-                _LOGGER.debug("Failed to parse model name for %s: %s", host, e)
+                _LOGGER.warning("Failed to parse model name for %s: %s", host, e)
                 device_info['model'] = 'Unknown'
         else:
             device_info['model'] = 'Unknown'
+            _LOGGER.warning("Host %s: model NAK or no response", host)
 
         # Serial number (optional)
         if len(responses) > 2 and not responses[2].is_nak() and responses[2].data:
             try:
                 device_info['serial'] = bytes_to_string(responses[2].data)
+                _LOGGER.info("Host %s: serial='%s'", host, device_info['serial'])
             except Exception as e:
-                _LOGGER.debug("Failed to parse serial number for %s: %s", host, e)
+                _LOGGER.warning("Failed to parse serial number for %s: %s", host, e)
                 device_info['serial'] = 'Unknown'
         else:
             device_info['serial'] = 'Unknown'
+            _LOGGER.warning("Host %s: serial NAK or no response", host)
 
         # Firmware version (optional)
         if len(responses) > 3 and not responses[3].is_nak() and responses[3].data:
             try:
                 device_info['firmware'] = bytes_to_string(responses[3].data)
+                _LOGGER.info("Host %s: firmware='%s'", host, device_info['firmware'])
             except Exception as e:
-                _LOGGER.debug("Failed to parse firmware version for %s: %s", host, e)
+                _LOGGER.warning("Failed to parse firmware version for %s: %s", host, e)
                 device_info['firmware'] = 'Unknown'
         else:
             device_info['firmware'] = 'Unknown'
+            _LOGGER.info("Host %s: firmware NAK or empty", host)
 
         devices[host] = device_info
         _LOGGER.info("Discovered amplifier at %s: %s (S/N: %s, FW: %s)",
