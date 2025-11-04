@@ -650,6 +650,180 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
             raise
 
+    async def handle_read_device_info(call):
+        """Handle read_device_info service call (diagnostic)."""
+        _LOGGER.warning("Service call: read_device_info - Reading device information...")
+
+        # Get the first available entry
+        entry_id = next(iter(hass.data[DOMAIN].keys()))
+        data = hass.data[DOMAIN][entry_id]
+        client: MezzoClient = data[CLIENT]
+
+        try:
+            from .pbus_protocol import ReadCommand, bytes_to_string, bytes_to_uint32, bytes_to_float
+            from .mezzo_memory_map import (
+                ADDR_MODEL_NAME,
+                ADDR_SERIAL_NUMBER,
+                ADDR_FIRMWARE_VERSION,
+                ADDR_MAC_ADDRESS,
+                ADDR_STANDBY_STATE,
+                ADDR_TEMP_TRANSFORMER,
+                ADDR_TEMP_HEATSINK,
+                ADDR_TEMP_CH1, ADDR_TEMP_CH2, ADDR_TEMP_CH3, ADDR_TEMP_CH4,
+                ADDR_FAULT_CODE,
+            )
+
+            # Query all device info
+            commands = [
+                ReadCommand(ADDR_MODEL_NAME, 20),
+                ReadCommand(ADDR_SERIAL_NUMBER, 16),
+                ReadCommand(ADDR_FIRMWARE_VERSION, 20),
+                ReadCommand(ADDR_MAC_ADDRESS, 6),
+                ReadCommand(ADDR_STANDBY_STATE, 4),
+                ReadCommand(ADDR_TEMP_TRANSFORMER, 4),
+                ReadCommand(ADDR_TEMP_HEATSINK, 4),
+                ReadCommand(ADDR_TEMP_CH1, 4),
+                ReadCommand(ADDR_TEMP_CH2, 4),
+                ReadCommand(ADDR_TEMP_CH3, 4),
+                ReadCommand(ADDR_TEMP_CH4, 4),
+                ReadCommand(ADDR_FAULT_CODE, 1),
+            ]
+
+            responses = await client._udp.send_request(commands)
+
+            # Build formatted output
+            output_lines = ["Device Information:"]
+            output_lines.append("=" * 70)
+
+            # Device Identification
+            output_lines.append("\n[DEVICE IDENTIFICATION]")
+
+            # Model name
+            if len(responses) > 0 and not responses[0].is_nak() and responses[0].data:
+                try:
+                    model = bytes_to_string(responses[0].data)
+                    output_lines.append(f"  Model Name:       {model}")
+                    output_lines.append(f"  Raw Data (hex):   {responses[0].data.hex()}")
+                except Exception as e:
+                    output_lines.append(f"  Model Name:       ERROR - {e}")
+                    output_lines.append(f"  Raw Data (hex):   {responses[0].data.hex()}")
+            else:
+                output_lines.append(f"  Model Name:       NAK or no response")
+
+            # Serial number
+            if len(responses) > 1 and not responses[1].is_nak() and responses[1].data:
+                try:
+                    serial = bytes_to_string(responses[1].data)
+                    output_lines.append(f"  Serial Number:    {serial}")
+                    output_lines.append(f"  Raw Data (hex):   {responses[1].data.hex()}")
+                except Exception as e:
+                    output_lines.append(f"  Serial Number:    ERROR - {e}")
+                    output_lines.append(f"  Raw Data (hex):   {responses[1].data.hex()}")
+            else:
+                output_lines.append(f"  Serial Number:    NAK or no response")
+
+            # Firmware version
+            if len(responses) > 2 and not responses[2].is_nak() and responses[2].data:
+                try:
+                    firmware = bytes_to_string(responses[2].data)
+                    output_lines.append(f"  Firmware Version: {firmware}")
+                    output_lines.append(f"  Raw Data (hex):   {responses[2].data.hex()}")
+                except Exception as e:
+                    output_lines.append(f"  Firmware Version: ERROR - {e}")
+                    output_lines.append(f"  Raw Data (hex):   {responses[2].data.hex()}")
+            else:
+                output_lines.append(f"  Firmware Version: NAK or no response")
+
+            # MAC address
+            if len(responses) > 3 and not responses[3].is_nak() and responses[3].data:
+                mac_bytes = responses[3].data[:6]
+                mac_addr = ":".join([f"{b:02x}" for b in mac_bytes])
+                output_lines.append(f"  MAC Address:      {mac_addr}")
+            else:
+                output_lines.append(f"  MAC Address:      NAK or no response")
+
+            # Device Status
+            output_lines.append("\n[DEVICE STATUS]")
+
+            # Standby state
+            if len(responses) > 4 and not responses[4].is_nak() and responses[4].data:
+                standby = bool(bytes_to_uint32(responses[4].data))
+                output_lines.append(f"  Standby State:    {'STANDBY' if standby else 'ACTIVE'}")
+            else:
+                output_lines.append(f"  Standby State:    NAK or no response")
+
+            # Temperatures
+            output_lines.append("\n[TEMPERATURES]")
+
+            temp_labels = [
+                ("Transformer", 5),
+                ("Heatsink", 6),
+                ("Channel 1", 7),
+                ("Channel 2", 8),
+                ("Channel 3", 9),
+                ("Channel 4", 10),
+            ]
+
+            for label, idx in temp_labels:
+                if len(responses) > idx and not responses[idx].is_nak() and responses[idx].data:
+                    try:
+                        temp = bytes_to_float(responses[idx].data)
+                        output_lines.append(f"  {label:12s}:  {temp:.1f}°C")
+                    except Exception as e:
+                        output_lines.append(f"  {label:12s}:  ERROR - {e}")
+                else:
+                    output_lines.append(f"  {label:12s}:  NAK or no response")
+
+            # Fault code
+            if len(responses) > 11 and not responses[11].is_nak() and responses[11].data:
+                from .pbus_protocol import bytes_to_uint8
+                fault_code = bytes_to_uint8(responses[11].data)
+                output_lines.append(f"\n[FAULT STATUS]")
+                output_lines.append(f"  Fault Code:       {fault_code} (0x{fault_code:02x})")
+            else:
+                output_lines.append(f"\n[FAULT STATUS]")
+                output_lines.append(f"  Fault Code:       NAK or no response")
+
+            # Memory addresses for reference
+            output_lines.append("\n[MEMORY ADDRESSES QUERIED]")
+            output_lines.append(f"  Model Name:       0x{ADDR_MODEL_NAME:08x}")
+            output_lines.append(f"  Serial Number:    0x{ADDR_SERIAL_NUMBER:08x}")
+            output_lines.append(f"  Firmware Version: 0x{ADDR_FIRMWARE_VERSION:08x}")
+            output_lines.append(f"  MAC Address:      0x{ADDR_MAC_ADDRESS:08x}")
+            output_lines.append(f"  Standby State:    0x{ADDR_STANDBY_STATE:08x}")
+
+            output_text = "\n".join(output_lines)
+
+            # Log to Home Assistant logs
+            _LOGGER.warning("Device Information:\n%s", output_text)
+
+            # Create persistent notification visible in UI
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Device Information",
+                    "message": f"```\n{output_text}\n```",
+                    "notification_id": f"{DOMAIN}_device_info",
+                },
+            )
+
+            _LOGGER.warning("Device information query complete. Check notifications for results.")
+
+        except Exception as err:
+            _LOGGER.error("Failed to read device information: %s", err)
+            import traceback
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Device Information Read Failed",
+                    "message": f"Error reading device information: {err}\n\nTraceback:\n{traceback.format_exc()}",
+                    "notification_id": f"{DOMAIN}_device_info_error",
+                },
+            )
+            raise
+
     # Register services
     hass.services.async_register(
         DOMAIN,
@@ -729,6 +903,13 @@ async def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         "read_zone_registers",
         handle_read_zone_registers,
+        schema=vol.Schema({}),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "read_device_info",
+        handle_read_device_info,
         schema=vol.Schema({}),
     )
 
