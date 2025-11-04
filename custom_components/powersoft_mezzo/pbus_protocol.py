@@ -372,3 +372,22 @@ def bytes_to_int32(data: bytes) -> int:
     if len(data) != 4:
         raise ValueError("Int32 must be 4 bytes")
     return struct.unpack('<i', data)[0]
+
+
+def bytes_to_string(data: bytes) -> str:
+    """
+    Convert bytes to null-terminated ASCII string.
+
+    Args:
+        data: Bytes to convert (may be null-terminated)
+
+    Returns:
+        Decoded string with null terminator removed
+    """
+    # Find null terminator if present
+    null_idx = data.find(b'\x00')
+    if null_idx >= 0:
+        data = data[:null_idx]
+
+    # Decode as ASCII, replacing invalid characters
+    return data.decode('ascii', errors='replace').strip()

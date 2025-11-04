@@ -80,10 +80,20 @@ class MezzoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="no_devices_found")
 
         # Build schema with discovered devices
-        devices = {
-            host: f"{info.get('model', 'Mezzo')} ({host})"
-            for host, info in self.discovered_devices.items()
-        }
+        # Display format: "Model - Serial Number (IP Address)"
+        devices = {}
+        for host, info in self.discovered_devices.items():
+            model = info.get('model', 'Unknown')
+            serial = info.get('serial', 'Unknown')
+            firmware = info.get('firmware', 'Unknown')
+
+            # Create a readable label with model, serial, and IP
+            if serial and serial != 'Unknown':
+                label = f"{model} - S/N: {serial} (IP: {host})"
+            else:
+                label = f"{model} (IP: {host})"
+
+            devices[host] = label
 
         schema = vol.Schema(
             {
