@@ -100,3 +100,19 @@ read_zone_registers:
 read_device_info:
   name: Read Device Information
   description: Diagnostic tool to query and display all device identification and status information (model, serial, firmware, MAC, temperatures, standby state). Use this to debug device discovery issues and verify communication.
+
+discover_amplifiers:
+  name: Discover Amplifiers
+  description: Scan network for Powersoft amplifiers and display all discovered devices with their IP addresses, models, and status. Useful for diagnosing discovery issues.
+  fields:
+    timeout:
+      name: Timeout
+      description: Time to wait for responses in seconds
+      required: false
+      default: 5
+      example: 5
+      selector:
+        number:
+          min: 1
+          max: 30
+          mode: box

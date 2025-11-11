@@ -650,6 +650,74 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
             raise
 
+    async def handle_discover_amplifiers(call):
+        """Handle discover_amplifiers service call (diagnostic)."""
+        timeout = call.data.get("timeout", 5.0)
+        _LOGGER.warning("Service call: discover_amplifiers with timeout=%.1fs", timeout)
+
+        try:
+            from .mezzo_client import discover_amplifiers
+
+            # Run discovery
+            _LOGGER.info("Starting amplifier discovery scan...")
+            devices = await discover_amplifiers(timeout=timeout)
+
+            # Build formatted output
+            output_lines = ["Amplifier Discovery Results:"]
+            output_lines.append("=" * 60)
+            output_lines.append(f"Scan timeout: {timeout}s")
+            output_lines.append(f"Devices found: {len(devices)}")
+            output_lines.append("")
+
+            if devices:
+                for ip, info in devices.items():
+                    output_lines.append(f"Device at {ip}:")
+                    output_lines.append(f"  Model: {info.get('model', 'Unknown')}")
+                    standby = info.get('standby', None)
+                    standby_str = "ON (standby)" if standby else "OFF (active)" if standby is not None else "Unknown"
+                    output_lines.append(f"  Power: {standby_str}")
+                    output_lines.append("")
+            else:
+                output_lines.append("No amplifiers found on network.")
+                output_lines.append("")
+                output_lines.append("Troubleshooting:")
+                output_lines.append("- Ensure amplifiers are powered on")
+                output_lines.append("- Check network connectivity")
+                output_lines.append("- Verify UDP port 8002 is not blocked")
+                output_lines.append("- Try increasing timeout value")
+                output_lines.append("- Check if amplifiers are on same network/VLAN")
+
+            output_text = "\n".join(output_lines)
+
+            # Log to Home Assistant logs
+            _LOGGER.warning("Amplifier Discovery Results:\n%s", output_text)
+
+            # Create persistent notification
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Amplifier Discovery",
+                    "message": f"```\n{output_text}\n```",
+                    "notification_id": f"{DOMAIN}_discover_amplifiers",
+                },
+            )
+
+            _LOGGER.warning("Discovery scan complete. Found %d device(s). Check notifications for details.", len(devices))
+
+        except Exception as err:
+            _LOGGER.error("Failed to discover amplifiers: %s", err)
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Amplifier Discovery Failed",
+                    "message": f"Error during discovery scan: {err}",
+                    "notification_id": f"{DOMAIN}_discover_amplifiers_error",
+                },
+            )
+            raise
+
     async def handle_read_device_info(call):
         """Handle read_device_info service call (diagnostic)."""
         _LOGGER.warning("Service call: read_device_info - Reading device information...")
@@ -911,6 +979,15 @@ async def async_register_services(hass: HomeAssistant) -> None:
         "read_device_info",
         handle_read_device_info,
         schema=vol.Schema({}),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "discover_amplifiers",
+        handle_discover_amplifiers,
+        schema=vol.Schema({
+            vol.Optional("timeout", default=5.0): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=30.0)),
+        }),
     )
 
 
