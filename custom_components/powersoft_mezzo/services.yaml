@@ -124,3 +124,49 @@ discover_amplifiers:
           min: 1
           max: 30
           mode: box
+
+test_port_scan:
+  name: Test Port Scan
+  description: Test connectivity to a specific amplifier on different UDP ports to identify which port it's using for PBus communication.
+  fields:
+    host:
+      name: Host IP Address
+      description: IP address of the amplifier to test
+      required: true
+      example: "10.0.42.38"
+      selector:
+        text:
+    start_port:
+      name: Start Port
+      description: First port to test
+      required: false
+      default: 8000
+      example: 8000
+      selector:
+        number:
+          min: 1
+          max: 65535
+          mode: box
+    end_port:
+      name: End Port
+      description: Last port to test
+      required: false
+      default: 8010
+      example: 8010
+      selector:
+        number:
+          min: 1
+          max: 65535
+          mode: box
+    timeout:
+      name: Timeout per port
+      description: Time to wait for response on each port (seconds)
+      required: false
+      default: 1.0
+      example: 1.0
+      selector:
+        number:
+          min: 0.5
+          max: 5.0
+          step: 0.5
+          mode: box

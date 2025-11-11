@@ -650,6 +650,112 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
             raise
 
+    async def handle_test_port_scan(call):
+        """Handle test_port_scan service call (diagnostic)."""
+        host = call.data["host"]
+        start_port = call.data.get("start_port", 8000)
+        end_port = call.data.get("end_port", 8010)
+        timeout = call.data.get("timeout", 1.0)
+
+        _LOGGER.warning(
+            "Service call: test_port_scan - Testing %s ports %d-%d (timeout=%.1fs)",
+            host, start_port, end_port, timeout
+        )
+
+        try:
+            from .pbus_protocol import ReadCommand
+            from .mezzo_memory_map import ADDR_STANDBY_STATE
+
+            # Simple read command to test connectivity
+            test_cmd = ReadCommand(ADDR_STANDBY_STATE, 4)
+
+            # Build formatted output
+            output_lines = ["Port Scan Results:"]
+            output_lines.append("=" * 60)
+            output_lines.append(f"Target: {host}")
+            output_lines.append(f"Port range: {start_port}-{end_port}")
+            output_lines.append(f"Timeout per port: {timeout}s")
+            output_lines.append("")
+
+            responsive_ports = []
+
+            for port in range(start_port, end_port + 1):
+                _LOGGER.debug("Testing port %d...", port)
+
+                # Create temporary client for this port
+                temp_client = MezzoClient(host, port, timeout)
+
+                try:
+                    await temp_client.connect()
+                    responses = await temp_client._udp.send_request([test_cmd], timeout=timeout)
+
+                    # Check if we got a valid response
+                    if responses and not responses[0].is_nak():
+                        output_lines.append(f"Port {port}: ✓ RESPONSE (got valid data)")
+                        responsive_ports.append(port)
+                        _LOGGER.info("Port %d responded with valid data!", port)
+                    else:
+                        output_lines.append(f"Port {port}: ⚠ NAK (device responded but rejected command)")
+                        _LOGGER.debug("Port %d sent NAK", port)
+
+                except TimeoutError:
+                    output_lines.append(f"Port {port}: ✗ No response (timeout)")
+                    _LOGGER.debug("Port %d timed out", port)
+                except Exception as e:
+                    output_lines.append(f"Port {port}: ✗ Error - {e}")
+                    _LOGGER.debug("Port %d error: %s", port, e)
+                finally:
+                    await temp_client.disconnect()
+
+            output_lines.append("")
+            output_lines.append("=" * 60)
+            if responsive_ports:
+                output_lines.append(f"Found {len(responsive_ports)} responsive port(s): {', '.join(map(str, responsive_ports))}")
+                output_lines.append("")
+                output_lines.append("Next steps:")
+                output_lines.append(f"- Use port {responsive_ports[0]} to communicate with this device")
+                output_lines.append("- Try read_device_info service with this IP to get more info")
+            else:
+                output_lines.append("No responsive ports found.")
+                output_lines.append("")
+                output_lines.append("Troubleshooting:")
+                output_lines.append("- Verify the device is powered on and network connected")
+                output_lines.append("- Check firewall settings")
+                output_lines.append("- Try a wider port range (e.g., 8000-9000)")
+                output_lines.append("- The device may use TCP instead of UDP")
+                output_lines.append("- The device may use a different protocol entirely")
+
+            output_text = "\n".join(output_lines)
+
+            # Log to Home Assistant logs
+            _LOGGER.warning("Port Scan Results:\n%s", output_text)
+
+            # Create persistent notification
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Port Scan Results",
+                    "message": f"```\n{output_text}\n```",
+                    "notification_id": f"{DOMAIN}_port_scan",
+                },
+            )
+
+            _LOGGER.warning("Port scan complete. Found %d responsive port(s). Check notifications for details.", len(responsive_ports))
+
+        except Exception as err:
+            _LOGGER.error("Failed to perform port scan: %s", err)
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Port Scan Failed",
+                    "message": f"Error during port scan: {err}",
+                    "notification_id": f"{DOMAIN}_port_scan_error",
+                },
+            )
+            raise
+
     async def handle_discover_amplifiers(call):
         """Handle discover_amplifiers service call (diagnostic)."""
         timeout = call.data.get("timeout", 5.0)
@@ -1010,6 +1116,18 @@ async def async_register_services(hass: HomeAssistant) -> None:
         handle_discover_amplifiers,
         schema=vol.Schema({
             vol.Optional("timeout", default=5.0): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=30.0)),
+        }),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "test_port_scan",
+        handle_test_port_scan,
+        schema=vol.Schema({
+            vol.Required("host"): cv.string,
+            vol.Optional("start_port", default=8000): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
+            vol.Optional("end_port", default=8010): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
+            vol.Optional("timeout", default=1.0): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=5.0)),
         }),
     )
 
