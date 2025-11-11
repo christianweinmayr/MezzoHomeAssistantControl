@@ -658,7 +658,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         _LOGGER.warning("Service call: test_quattro_direct - Testing QUATTROCANALI protocol at %s", host)
 
         try:
-            from .quattro_protocol import build_power_command, DEFAULT_PORT as QUATTRO_PORT, QuattroResponse
+            from .quattro_protocol import build_ping_command, DEFAULT_PORT as QUATTRO_PORT, QuattroResponse
             from .udp_manager import UDPProtocol
             import asyncio
 
@@ -669,11 +669,11 @@ async def async_register_services(hass: HomeAssistant) -> None:
             output_lines.append(f"Timeout: {timeout}s")
             output_lines.append("")
 
-            # Create a simple power query command
-            test_cmd = build_power_command(True)
+            # Create a PING command for connectivity test
+            test_cmd = build_ping_command()
             packet = test_cmd.build_packet()
 
-            output_lines.append(f"Sending QUATTROCANALI packet ({len(packet)} bytes):")
+            output_lines.append(f"Sending QUATTROCANALI PING ({len(packet)} bytes):")
             output_lines.append(f"  Hex: {packet.hex()}")
             output_lines.append("")
 

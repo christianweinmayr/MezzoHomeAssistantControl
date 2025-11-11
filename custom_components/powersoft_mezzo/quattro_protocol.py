@@ -19,7 +19,9 @@ STX = 0x02
 ETX = 0x03
 DEFAULT_PORT = 1234
 
-# Command codes (from Biamp documentation)
+# Command codes (from official Powersoft Quattrocanali.pdf documentation)
+CMD_PING = 0x00   # Ping command - simple connectivity test
+CMD_INFO = 0x0B   # Info command - device identification (128 bytes)
 CMD_POWER = 0x14  # Standby control command
 
 
@@ -170,6 +172,36 @@ class QuattroResponse:
 
 # Command builders for common operations
 
+def build_ping_command() -> QuattroCommand:
+    """
+    Build a PING command for connectivity testing.
+
+    PING is the simplest command with no data payload,
+    perfect for device discovery and connectivity testing.
+
+    Returns:
+        QuattroCommand for PING
+    """
+    return QuattroCommand(cmd=CMD_PING, data=b'')
+
+
+def build_info_command() -> QuattroCommand:
+    """
+    Build an INFO command to query device identification.
+
+    Returns device information including:
+    - Manufacturer (32 bytes)
+    - Family (32 bytes)
+    - Model (32 bytes)
+    - Serial Number (32 bytes)
+    Total: 128 bytes
+
+    Returns:
+        QuattroCommand for INFO
+    """
+    return QuattroCommand(cmd=CMD_INFO, data=b'')
+
+
 def build_power_command(power_on: bool) -> QuattroCommand:
     """
     Build a power control command.
@@ -184,3 +216,35 @@ def build_power_command(power_on: bool) -> QuattroCommand:
     # Power OFF: 02 00 00 00 (little-endian)
     data = struct.pack('<I', 1 if power_on else 2)
     return QuattroCommand(cmd=CMD_POWER, data=data)
+
+
+def parse_info_response(data: bytes) -> Optional[dict]:
+    """
+    Parse the response from an INFO command.
+
+    Args:
+        data: Response data (should be 128 bytes)
+
+    Returns:
+        Dictionary with device info or None if invalid
+    """
+    if len(data) != 128:
+        _LOGGER.warning("INFO response has incorrect length: %d (expected 128)", len(data))
+        return None
+
+    try:
+        # Each field is 32 bytes, null-terminated strings
+        manufacturer = data[0:32].split(b'\x00', 1)[0].decode('ascii', errors='ignore').strip()
+        family = data[32:64].split(b'\x00', 1)[0].decode('ascii', errors='ignore').strip()
+        model = data[64:96].split(b'\x00', 1)[0].decode('ascii', errors='ignore').strip()
+        serial = data[96:128].split(b'\x00', 1)[0].decode('ascii', errors='ignore').strip()
+
+        return {
+            'manufacturer': manufacturer,
+            'family': family,
+            'model': model,
+            'serial_number': serial,
+        }
+    except Exception as err:
+        _LOGGER.error("Failed to parse INFO response: %s", err)
+        return None

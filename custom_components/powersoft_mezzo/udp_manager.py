@@ -391,12 +391,13 @@ class UDPBroadcaster:
             )
 
             try:
-                # Build a simple status query command
-                # Use a power status query (we don't want to change state, just detect devices)
-                status_cmd = build_power_command(True)  # Query power state
-                packet = status_cmd.build_packet()
+                # Build a PING command for discovery
+                # PING is the simplest connectivity test with no side effects
+                from .quattro_protocol import build_ping_command
+                ping_cmd = build_ping_command()
+                packet = ping_cmd.build_packet()
 
-                _LOGGER.info("Broadcasting QUATTROCANALI discovery packet on port %d", QUATTRO_PORT)
+                _LOGGER.info("Broadcasting QUATTROCANALI PING on port %d", QUATTRO_PORT)
                 transport.sendto(packet, (BROADCAST_ADDRESS, QUATTRO_PORT))
 
                 # Wait for timeout to collect responses
