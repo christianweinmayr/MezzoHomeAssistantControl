@@ -650,6 +650,117 @@ async def async_register_services(hass: HomeAssistant) -> None:
             )
             raise
 
+    async def handle_test_quattro_direct(call):
+        """Handle test_quattro_direct service call (diagnostic)."""
+        host = call.data["host"]
+        timeout = call.data.get("timeout", 2.0)
+
+        _LOGGER.warning("Service call: test_quattro_direct - Testing QUATTROCANALI protocol at %s", host)
+
+        try:
+            from .quattro_protocol import build_power_command, DEFAULT_PORT as QUATTRO_PORT, QuattroResponse
+            from .udp_manager import UDPProtocol
+            import asyncio
+
+            # Build formatted output
+            output_lines = ["QUATTROCANALI Direct Test Results:"]
+            output_lines.append("=" * 60)
+            output_lines.append(f"Target: {host}:{QUATTRO_PORT}")
+            output_lines.append(f"Timeout: {timeout}s")
+            output_lines.append("")
+
+            # Create a simple power query command
+            test_cmd = build_power_command(True)
+            packet = test_cmd.build_packet()
+
+            output_lines.append(f"Sending QUATTROCANALI packet ({len(packet)} bytes):")
+            output_lines.append(f"  Hex: {packet.hex()}")
+            output_lines.append("")
+
+            # Create UDP socket and send directly (not broadcast)
+            response_data = None
+            response_event = asyncio.Event()
+
+            def handle_response(data: bytes, addr):
+                nonlocal response_data
+                response_data = data
+                response_event.set()
+
+            loop = asyncio.get_event_loop()
+            transport, protocol = await loop.create_datagram_endpoint(
+                lambda: UDPProtocol(handle_response),
+                local_addr=('0.0.0.0', 0),
+            )
+
+            try:
+                # Send directly to the host (unicast, not broadcast)
+                _LOGGER.info("Sending QUATTROCANALI packet to %s:%d", host, QUATTRO_PORT)
+                transport.sendto(packet, (host, QUATTRO_PORT))
+
+                # Wait for response
+                try:
+                    await asyncio.wait_for(response_event.wait(), timeout=timeout)
+
+                    output_lines.append("✓ RESPONSE RECEIVED!")
+                    output_lines.append(f"  Response size: {len(response_data)} bytes")
+                    output_lines.append(f"  Hex: {response_data.hex()}")
+                    output_lines.append("")
+
+                    # Try to parse response
+                    quattro_resp = QuattroResponse.parse_packet(response_data)
+                    if quattro_resp:
+                        output_lines.append("✓ VALID QUATTROCANALI PROTOCOL!")
+                        output_lines.append(f"  Command: 0x{quattro_resp.cmd:02x}")
+                        output_lines.append(f"  Cookie: {quattro_resp.cookie}")
+                        output_lines.append(f"  Data: {quattro_resp.data.hex()}")
+                        output_lines.append("")
+                        output_lines.append("SUCCESS: Device responds to QUATTROCANALI protocol!")
+                    else:
+                        output_lines.append("⚠ Response received but failed QUATTROCANALI parsing")
+                        output_lines.append("  The device may use a different protocol variant")
+
+                except asyncio.TimeoutError:
+                    output_lines.append("✗ NO RESPONSE (timeout after {timeout}s)")
+                    output_lines.append("")
+                    output_lines.append("Troubleshooting:")
+                    output_lines.append("- Check device is powered on and network connected")
+                    output_lines.append("- Verify IP address is correct")
+                    output_lines.append("- Check firewall settings")
+                    output_lines.append("- Device may require different command or authentication")
+
+            finally:
+                transport.close()
+
+            output_text = "\n".join(output_lines)
+
+            # Log to Home Assistant logs
+            _LOGGER.warning("QUATTROCANALI Direct Test Results:\n%s", output_text)
+
+            # Create persistent notification
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "QUATTROCANALI Direct Test",
+                    "message": f"```\n{output_text}\n```",
+                    "notification_id": f"{DOMAIN}_quattro_direct_test",
+                },
+            )
+
+        except Exception as err:
+            _LOGGER.error("Failed to test QUATTROCANALI direct: %s", err)
+            import traceback
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "QUATTROCANALI Direct Test Failed",
+                    "message": f"Error: {err}\n\n{traceback.format_exc()}",
+                    "notification_id": f"{DOMAIN}_quattro_direct_test_error",
+                },
+            )
+            raise
+
     async def handle_test_port_scan(call):
         """Handle test_port_scan service call (diagnostic)."""
         host = call.data["host"]
@@ -1128,6 +1239,16 @@ async def async_register_services(hass: HomeAssistant) -> None:
             vol.Optional("start_port", default=8000): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             vol.Optional("end_port", default=8010): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             vol.Optional("timeout", default=0.5): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=5.0)),
+        }),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "test_quattro_direct",
+        handle_test_quattro_direct,
+        schema=vol.Schema({
+            vol.Required("host"): cv.string,
+            vol.Optional("timeout", default=2.0): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=10.0)),
         }),
     )
 
