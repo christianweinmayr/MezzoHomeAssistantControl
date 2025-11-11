@@ -353,3 +353,60 @@ class UDPBroadcaster:
 
         _LOGGER.info("Broadcast complete, received %d responses", len(responses_by_host))
         return responses_by_host
+
+    @staticmethod
+    async def broadcast_quattro(
+        timeout: float = 5.0,
+    ) -> Dict[str, bytes]:
+        """
+        Broadcast a QUATTROCANALI discovery request and collect responses.
+
+        Args:
+            timeout: Time to wait for responses
+
+        Returns:
+            Dictionary mapping IP addresses to raw response data
+        """
+        from .quattro_protocol import build_power_command, DEFAULT_PORT as QUATTRO_PORT, QuattroResponse
+
+        responses_by_host = {}
+
+        def handle_response(data: bytes, addr: Tuple[str, int]):
+            """Handle QUATTROCANALI broadcast responses."""
+            try:
+                # Just store raw response data - we'll check if it's valid QUATTRO protocol
+                if len(data) > 0:
+                    responses_by_host[addr[0]] = data
+                    _LOGGER.debug("QUATTROCANALI broadcast response from %s", addr[0])
+            except Exception as err:
+                _LOGGER.debug("Error handling QUATTROCANALI response from %s: %s", addr[0], err)
+
+        try:
+            # Create UDP endpoint for broadcast
+            loop = asyncio.get_event_loop()
+            transport, protocol = await loop.create_datagram_endpoint(
+                lambda: UDPProtocol(handle_response),
+                local_addr=('0.0.0.0', 0),
+                allow_broadcast=True,
+            )
+
+            try:
+                # Build a simple status query command
+                # Use a power status query (we don't want to change state, just detect devices)
+                status_cmd = build_power_command(True)  # Query power state
+                packet = status_cmd.build_packet()
+
+                _LOGGER.info("Broadcasting QUATTROCANALI discovery packet on port %d", QUATTRO_PORT)
+                transport.sendto(packet, (BROADCAST_ADDRESS, QUATTRO_PORT))
+
+                # Wait for timeout to collect responses
+                await asyncio.sleep(timeout)
+
+            finally:
+                transport.close()
+
+        except OSError as err:
+            _LOGGER.error("Failed to broadcast QUATTROCANALI: %s", err)
+
+        _LOGGER.info("QUATTROCANALI broadcast complete, received %d responses", len(responses_by_host))
+        return responses_by_host

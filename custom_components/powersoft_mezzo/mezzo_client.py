@@ -1454,39 +1454,57 @@ class MezzoClient:
 
 async def discover_amplifiers(timeout: float = 5.0) -> Dict[str, Dict[str, Any]]:
     """
-    Discover Mezzo amplifiers on the network.
+    Discover Powersoft amplifiers on the network.
+
+    Scans for both Mezzo (port 8002) and QUATTROCANALI (port 1234) amplifiers.
 
     Args:
         timeout: Time to wait for responses
 
     Returns:
-        Dictionary mapping IP addresses to device information
+        Dictionary mapping IP addresses to device information including protocol type
     """
+    from .quattro_protocol import build_power_command, DEFAULT_PORT as QUATTRO_PORT
+
+    # Try Mezzo protocol first (port 8002)
     # Broadcast read requests for device identification
-    # Read: standby state (4 bytes), model name (20 bytes), serial (16 bytes), firmware (20 bytes)
-    commands = [
+    mezzo_commands = [
         ReadCommand(ADDR_STANDBY_STATE, 4),
         ReadCommand(ADDR_MODEL_NAME, 20),
         ReadCommand(ADDR_SERIAL_NUMBER, 16),
         ReadCommand(ADDR_FIRMWARE_VERSION, 20),
     ]
 
-    _LOGGER.info("Starting amplifier discovery...")
-    responses_by_host = await UDPBroadcaster.broadcast(commands, timeout=timeout)
+    _LOGGER.info("Starting amplifier discovery (scanning both Mezzo and QUATTROCANALI)...")
 
-    _LOGGER.info("Discovery received responses from %d host(s)", len(responses_by_host))
+    # Scan Mezzo devices on port 8002
+    _LOGGER.info("Scanning for Mezzo amplifiers on port 8002...")
+    mezzo_responses = await UDPBroadcaster.broadcast(mezzo_commands, port=8002, timeout=timeout)
+
+    # Scan QUATTROCANALI devices on port 1234
+    _LOGGER.info("Scanning for QUATTROCANALI amplifiers on port 1234...")
+    quattro_responses = await UDPBroadcaster.broadcast_quattro(timeout=timeout)
+
+    _LOGGER.info("Discovery scan complete: Mezzo=%d, QUATTROCANALI=%d",
+                 len(mezzo_responses), len(quattro_responses))
 
     devices = {}
-    for host, responses in responses_by_host.items():
-        _LOGGER.info("Processing responses from host %s: received %d response(s)",
+
+    # Process Mezzo responses (port 8002, PBus protocol)
+    for host, responses in mezzo_responses.items():
+        _LOGGER.info("Processing Mezzo responses from host %s: received %d response(s)",
                     host, len(responses) if responses else 0)
 
         if not responses or len(responses) < 1:
-            _LOGGER.warning("Host %s: No valid responses, skipping", host)
+            _LOGGER.warning("Host %s: No valid Mezzo responses, skipping", host)
             continue
 
         # Parse responses - not all may succeed, so handle gracefully
-        device_info = {'host': host}
+        device_info = {
+            'host': host,
+            'protocol': 'mezzo',
+            'port': 8002
+        }
 
         # Log all responses for debugging
         for idx, resp in enumerate(responses):
@@ -1541,10 +1559,42 @@ async def discover_amplifiers(timeout: float = 5.0) -> Dict[str, Dict[str, Any]]
             _LOGGER.info("Host %s: firmware NAK or empty", host)
 
         devices[host] = device_info
-        _LOGGER.info("Discovered amplifier at %s: %s (S/N: %s, FW: %s)",
+        _LOGGER.info("Discovered Mezzo amplifier at %s: %s (S/N: %s, FW: %s)",
                     host, device_info.get('model', 'Unknown'),
                     device_info.get('serial', 'Unknown'),
                     device_info.get('firmware', 'Unknown'))
 
-    _LOGGER.info("Discovery complete: found %d amplifier(s)", len(devices))
+    # Process QUATTROCANALI responses (port 1234, custom Powersoft protocol)
+    from .quattro_protocol import QuattroResponse
+    for host, raw_data in quattro_responses.items():
+        _LOGGER.info("Processing QUATTROCANALI response from host %s: %d bytes",
+                    host, len(raw_data) if raw_data else 0)
+
+        if not raw_data or len(raw_data) < 10:
+            _LOGGER.warning("Host %s: Invalid QUATTROCANALI response, skipping", host)
+            continue
+
+        # Try to parse as QUATTROCANALI protocol
+        quattro_resp = QuattroResponse.parse_packet(raw_data)
+        if quattro_resp:
+            # Successfully parsed QUATTROCANALI response
+            device_info = {
+                'host': host,
+                'protocol': 'quattrocanali',
+                'port': 1234,
+                'model': 'QUATTROCANALI',  # We'll refine this later with proper queries
+                'standby': False,  # TODO: Parse from response data
+                'serial': 'Unknown',
+                'firmware': 'Unknown'
+            }
+
+            devices[host] = device_info
+            _LOGGER.info("Discovered QUATTROCANALI amplifier at %s", host)
+        else:
+            _LOGGER.warning("Host %s: Failed to parse QUATTROCANALI response", host)
+
+    _LOGGER.info("Discovery complete: found %d amplifier(s) total (Mezzo: %d, QUATTROCANALI: %d)",
+                 len(devices),
+                 len([d for d in devices.values() if d.get('protocol') == 'mezzo']),
+                 len([d for d in devices.values() if d.get('protocol') == 'quattrocanali']))
     return devices
