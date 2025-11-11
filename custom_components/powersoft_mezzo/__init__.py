@@ -655,7 +655,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         host = call.data["host"]
         start_port = call.data.get("start_port", 8000)
         end_port = call.data.get("end_port", 8010)
-        timeout = call.data.get("timeout", 1.0)
+        timeout = call.data.get("timeout", 0.5)
 
         _LOGGER.warning(
             "Service call: test_port_scan - Testing %s ports %d-%d (timeout=%.1fs)",
@@ -1127,7 +1127,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             vol.Required("host"): cv.string,
             vol.Optional("start_port", default=8000): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             vol.Optional("end_port", default=8010): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
-            vol.Optional("timeout", default=1.0): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=5.0)),
+            vol.Optional("timeout", default=0.5): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=5.0)),
         }),
     )
 
