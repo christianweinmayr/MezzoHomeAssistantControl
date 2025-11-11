@@ -720,14 +720,31 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_read_device_info(call):
         """Handle read_device_info service call (diagnostic)."""
-        _LOGGER.warning("Service call: read_device_info - Reading device information...")
+        host = call.data.get("host")
 
-        # Get the first available entry
-        entry_id = next(iter(hass.data[DOMAIN].keys()))
-        data = hass.data[DOMAIN][entry_id]
-        client: MezzoClient = data[CLIENT]
+        if host:
+            _LOGGER.warning("Service call: read_device_info - Reading device information from %s...", host)
+        else:
+            _LOGGER.warning("Service call: read_device_info - Reading device information...")
+
+        # Determine which client to use
+        if host:
+            # Create temporary client for specified host
+            temp_client = MezzoClient(host, DEFAULT_PORT, DEFAULT_TIMEOUT)
+            client = temp_client
+            should_cleanup = True
+        else:
+            # Use configured client
+            entry_id = next(iter(hass.data[DOMAIN].keys()))
+            data = hass.data[DOMAIN][entry_id]
+            client = data[CLIENT]
+            should_cleanup = False
 
         try:
+            # Connect if using temporary client
+            if should_cleanup:
+                await client.connect()
+
             from .pbus_protocol import ReadCommand, bytes_to_string, bytes_to_uint32, bytes_to_float
             from .mezzo_memory_map import (
                 ADDR_MODEL_NAME,
@@ -891,6 +908,10 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 },
             )
             raise
+        finally:
+            # Disconnect temporary client if we created one
+            if should_cleanup:
+                await client.disconnect()
 
     # Register services
     hass.services.async_register(
@@ -978,7 +999,9 @@ async def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         "read_device_info",
         handle_read_device_info,
-        schema=vol.Schema({}),
+        schema=vol.Schema({
+            vol.Optional("host"): cv.string,
+        }),
     )
 
     hass.services.async_register(
